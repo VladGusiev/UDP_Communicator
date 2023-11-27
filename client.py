@@ -11,6 +11,8 @@ CLIENT_PORT = 50602
 SERVER_IP = "127.0.0.1"
 SERVER_PORT = 50601
 
+COMMUNICATION_STARTED = False
+
 KEEP_ALIVE_INTERVAL = 5  # seconds
 KEEP_ALIVE_MESSAGE = struct.pack("!B", 0x06)
 
@@ -24,6 +26,8 @@ K = '00010000'  # Keep alive
 W = '00100000'  # Switch roles
 N = '01000000'  # new stream of data
 C = '10000000'  # Complete stream of data
+
+CURRENT_CATEGORY = ""
 
 
 class Client:
@@ -41,11 +45,11 @@ class Client:
         data, self.server = self.socket.recvfrom(1024)  # buffer size is 1024 bytes
         return str(data, encoding="utf-8")
 
-    def send_message(self, category, message):
-        # message = self.creating_checksum(message)
-        # message = str('{0:032b}'.format(message))
-        message = self.creating_category(category) + self.creating_flags([A, S, K, W]) + message.encode("utf-8")
-        # message = bytes(message, encoding="utf-8")
+    def send_message(self, category, flags, message):
+
+        checksum = self.creating_checksum(message)
+        message = self.creating_category(category) + self.creating_flags(flags) + self.creating_fragment_number(1) + checksum + message.encode("utf-8")
+
         self.socket.sendto(message, (self.server_ip, self.server_port))
 
     # creating header consisting of category, falgs, fragment number, and checksum
@@ -65,9 +69,10 @@ class Client:
         category = struct.pack("!B", category)
         return category
 
+
     def creating_flags(self, flags_list):
         if len(flags_list) == 1:
-            flags = struct.pack("!B", flags_list[0])
+            flags = struct.pack("!B", int(flags_list[0], 2))
         else:
             # add all flags together in binary form, flags is a list of flags
             flags = int(flags_list[0], 2)
@@ -76,6 +81,17 @@ class Client:
             flags = struct.pack("!B", flags)
         return flags
 
+
+    # fragment number will take 2 bytes to represent the fragment number
+    def creating_fragment_number(self, fragment_number):
+        fragment_number = struct.pack("!H", fragment_number)
+        return fragment_number
+
+
+    def creating_checksum(self, data):
+        checksum = zlib.crc32(bytes(data, "utf-8"))
+        checksum = struct.pack("!I", checksum)
+        return checksum
 
 
 
@@ -105,25 +121,75 @@ class Client:
         print("Client closed...")
 
 
+def system_message():
+    print("What type of system message would you like to send?:")
+    print("1 -> Switch roles")
+    print("2 -> Quit")
+    system_message = input("Your choice:")
+    if system_message == "1":
+        return '1'
+    else:
+        # CURRENT_CATEGORY = ''
+        return '2'
+
+
+
+# TODO add fragmenting, sending message about new stram and message about complete stream so sevrer can reassemble
+def text_message():
+    print("Type you messages here. Type 'xxx' to end sending messages.")
+    user_message = input()
+    while user_message != "xxx":
+        client.send_message(CURRENT_CATEGORY, [P], user_message)
+        data = client.receive()
+        print(data)
+        user_message = input()
+    if user_message == "xxx":
+        return 'x'
+
+
+
 if __name__ == "__main__":
     client = Client(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT)
     # client.start_keep_alive()
     data = "empty"
 
     while data != "End connection message recieved... closing connection":
-        category = ""
+
 
         # while user does not input a valid category request for a valid category
-        while category != "1" and category != "2" and category != "3":
+        while CURRENT_CATEGORY != "1" and CURRENT_CATEGORY != "2" and CURRENT_CATEGORY != "3" and CURRENT_CATEGORY != "4":
             print("What type of message would you like to send? (text, file)?:")
             print("1 -> System message")
             print("2 -> Text message")
             print("3 -> File message")
-            category = input("Your choice:" )
+            print("4 -> Quit")
+            CURRENT_CATEGORY = input("Your choice:" )
+        if CURRENT_CATEGORY == "4":
+            break
 
-        print("Input your message: ")
-        client.send_message(category, input())
-        data = client.receive()
-        print(data)
+        # if user wants to send a system message
+        if CURRENT_CATEGORY == "1":
+            type_of_message = system_message()
+            if type_of_message == "1":  # switch roles
+                client.send_message(CURRENT_CATEGORY, [W], '')
+                CURRENT_CATEGORY = ''
+                continue
+            elif type_of_message == "2":
+                CURRENT_CATEGORY = ''
+                continue
+
+        # if user wants to send a text message
+        elif CURRENT_CATEGORY == "2":
+            client.send_message(CURRENT_CATEGORY, [N], 'fragment size info will be here')  # sending message about new stream
+            if text_message() == 'x':
+                client.send_message(CURRENT_CATEGORY, [C], '')  # sending message about complete stream
+                CURRENT_CATEGORY = ''
+                continue
+
+        # TODO ADD FILE SENDING
+        # print("Input your message: ")
+        # client.send_message(CURRENT_CATEGORY, input())
+        # data = client.receive()
+        # print(data)
 
     client.quit()

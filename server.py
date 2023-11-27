@@ -3,6 +3,7 @@ import struct
 import threading
 import time
 import os
+import zlib
 
 
 SERVER_IP = "127.0.0.1"
@@ -31,6 +32,18 @@ FLAGS = {
     8: "S"
 }
 
+CATEGORIES = {
+    1: "System",
+    2: "Text",
+    3: "File"
+}
+
+GETTING_TEXT_MESSAGE = False
+FULL_TEXT_MESSAGE = ""
+
+GETTING_FILE_MESSAGE = False
+
+
 
 class Server:
     def __init__(self, ip, port) -> None:
@@ -43,18 +56,51 @@ class Server:
         data = None
         while data == None:
             data, self.client = self.socket.recvfrom(1024)  # buffer size is 1024 bytes
-            self.client_last_keep_alive = time.time()
+            # self.client_last_keep_alive = time.time()
 
-        print("Recieved message: ", data)
-        # return str(data, encoding="utf-8")
-        print("type: ", type(data[0]))  # integer
-        print("data size:", len(data))
-        print("Category: ", data[0])
-        print("Flags raw: ", data[1])
-        print("Flags in binary form: ", format(data[1], "08b"))
-        print("Flags: ", self.get_flags(format(data[1], "08b")))
-        print("Message: ", data[2::].decode("utf-8"))
+        if self.check_checksum(data):
+            if not GETTING_TEXT_MESSAGE:
+                server.listening_text_message(data)
+            elif GETTING_TEXT_MESSAGE:
+                server.receiving_text_message(data)
+                server.receiving_end_of_text_message(data)
+        else:
+            print("Checksums do not match")
+            # TODO add what to do if checksums do not match (most likely ignore and wait next message)
+
+
+        # print("Recieved message: ", data)
+        # # return str(data, encoding="utf-8")
+        # print("type: ", type(data[0]))  # integer
+        # print("data size:", len(data))
+        # print("Category: ", data[0])
+        # print("Flags raw: ", data[1])
+        # print("Flags in binary form: ", format(data[1], "08b"))
+        # print("Flags: ", self.get_flags(format(data[1], "08b")))
+        # print("Message: ", data[2::].decode("utf-8"))
         return data
+
+
+    def listen_to_communication_start(self, data):
+        global COMMUNICATION_STARTED
+        if data[0] == 1:
+            if "S" in self.get_flags(format(data[1], "08b")):
+                print("Recieved start of communication")
+                COMMUNICATION_STARTED = True
+                self.send_response()
+    def creating_checksum(self, message):
+        checksum = zlib.crc32(bytes(message, "utf-8"))
+        checksum = struct.pack("!I", checksum)
+        return checksum
+
+    def check_checksum(self, data):
+        checksum = data[4:8]
+        message = data[8::].decode("utf-8")
+        calculated_checksum = self.creating_checksum(message)
+        if checksum == calculated_checksum:
+            return True
+        else:
+            return False
 
     def get_flags(self, flags):
         all_flags = []
@@ -64,6 +110,30 @@ class Server:
                 all_flags.append(FLAGS[i])
             i += 1
         return all_flags
+
+    def listening_text_message(self, data):
+        global GETTING_TEXT_MESSAGE
+        if data[0] == 2:  # category is correct
+            if "N" in self.get_flags(format(data[1], "08b")):  # flags is start of text message
+                print("Recieved start of text message")
+                GETTING_TEXT_MESSAGE = True
+        # print("Text message: ", data)
+
+    def receiving_text_message(self, data):
+        global FULL_TEXT_MESSAGE
+        if data[0] == 2:
+            if "P" in self.get_flags(format(data[1], "08b")):  # flag is text message
+                print("Recieved text message")
+                FULL_TEXT_MESSAGE += data[8::].decode("utf-8")
+
+    def receiving_end_of_text_message(self, data):
+        global FULL_TEXT_MESSAGE, GETTING_TEXT_MESSAGE
+        if data[0] == 2:
+            if "C" in self.get_flags(format(data[1], "08b")):  # flag is end of text message
+                print("Recieved end of text message")
+                GETTING_TEXT_MESSAGE = False
+                print("Full text message: ", FULL_TEXT_MESSAGE)
+                FULL_TEXT_MESSAGE = ""
 
     def send_response(self):
         self.socket.sendto(b"Message recieved...", self.client)
@@ -98,7 +168,9 @@ if __name__ == "__main__":
     while data != "End connection":
         if data != "empty":
             server.send_response()
+
         data = server.receive()
+
 
     server.send_last_response()
     server.quit()
