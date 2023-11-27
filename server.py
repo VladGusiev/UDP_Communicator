@@ -11,6 +11,8 @@ import segment
 SERVER_IP = "127.0.0.1"
 SERVER_PORT = 50601
 
+COMMUNICATION_STARTED = False
+
 KEEP_ALIVE_TIMEOUT = 20  # seconds
 KEEP_ALIVE_MESSAGE = struct.pack("!B", 0x06)
 
@@ -85,19 +87,10 @@ class Server:
     def listen_to_communication_start(self, data):
         global COMMUNICATION_STARTED
         if data[0] == 1:
-            if "S" in self.get_flags(format(data[1], "08b")):
+            if "S" in segment.get_flags(format(data[1], "08b")):
                 print("Recieved start of communication")
                 COMMUNICATION_STARTED = True
                 self.send_response()
-
-    def get_flags(self, flags):
-        all_flags = []
-        i = 1
-        for f in flags:
-            if f == "1":
-                all_flags.append(FLAGS[i])
-            i += 1
-        return all_flags
 
     def listening_text_message(self, data):
         global GETTING_TEXT_MESSAGE
@@ -110,14 +103,14 @@ class Server:
     def receiving_text_message(self, data):
         global FULL_TEXT_MESSAGE
         if data[0] == 2:
-            if "P" in self.get_flags(format(data[1], "08b")):  # flag is text message
+            if "P" in segment.get_flags(format(data[1], "08b")):  # flag is text message
                 print("Recieved text message")
                 FULL_TEXT_MESSAGE += data[8::].decode("utf-8")
 
     def receiving_end_of_text_message(self, data):
         global FULL_TEXT_MESSAGE, GETTING_TEXT_MESSAGE
         if data[0] == 2:
-            if "C" in self.get_flags(format(data[1], "08b")):  # flag is end of text message
+            if "C" in segment.get_flags(format(data[1], "08b")):  # flag is end of text message
                 print("Recieved end of text message")
                 GETTING_TEXT_MESSAGE = False
                 print("Full text message: ", FULL_TEXT_MESSAGE)
@@ -153,11 +146,29 @@ if __name__ == "__main__":
     # server.start_keep_alive_monitor_thread()
     data = "empty"
 
-    while data != "End connection":
-        if data != "empty":
-            server.send_response()
 
-        data = server.receive()
+    while data != "End connection":
+        # global COMMUNICATION_STARTED, CURRENT_CATEGORY
+        # TODO need to tidy up this code
+        # establish communication with server and wait for server to send back syn ack. If syn ack is not received in 5 seconds, resend syn
+        if not COMMUNICATION_STARTED:
+            print("Waiting for start of communication message...")
+            while not COMMUNICATION_STARTED:
+                data = server.receive()
+                if "S" in segment.get_flags(format(data[1], "08b")):
+                    print("Received start of communication message, sending response...")
+
+                    # send response
+                    message = segment.creating_category('1') + segment.creating_flags([S, A]) + segment.creating_fragment_number(1) + segment.creating_checksum('') + ''.encode("utf-8")
+                    server.socket.sendto(message, server.client)
+
+                    COMMUNICATION_STARTED = True
+                    continue
+        else:
+            if data != "empty":
+                server.send_response()
+
+            data = server.receive()
 
     server.send_last_response()
     server.quit()

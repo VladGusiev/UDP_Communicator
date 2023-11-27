@@ -4,8 +4,8 @@ import time
 import struct
 import os
 import zlib
-
 import sys
+
 import segment
 
 CLIENT_IP = "127.0.0.1"
@@ -18,6 +18,9 @@ COMMUNICATION_STARTED = False
 
 KEEP_ALIVE_INTERVAL = 5  # seconds
 KEEP_ALIVE_MESSAGE = struct.pack("!B", 0x06)
+
+# for resending packets that were not acknowledged
+TIMEOUT_INTERVAL = 5  # seconds
 
 
 # all flags values
@@ -46,7 +49,7 @@ class Client:
     def receive(self):
         data = None
         data, self.server = self.socket.recvfrom(1024)  # buffer size is 1024 bytes
-        return str(data, encoding="utf-8")
+        return data
 
     def send_message(self, category, flags, message):
 
@@ -83,7 +86,6 @@ def system_message():
         return '2'
 
 
-
 # TODO add fragmenting, sending message about new stram and message about complete stream so sevrer can reassemble
 def text_message():
     print("Type you messages here. Type 'xxx' to end sending messages.")
@@ -97,44 +99,55 @@ def text_message():
         return 'x'
 
 
-
 if __name__ == "__main__":
     client = Client(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT)
     # client.start_keep_alive()
     data = "empty"
 
     while data != "End connection message recieved... closing connection":
+        # global COMMUNICATION_STARTED, CURRENT_CATEGORY
+        # establish communication with server and wait for server to send back syn ack. If syn ack is not received in 5 seconds, resend syn
+        if not COMMUNICATION_STARTED:
+            client.send_message("1", [S], '')
+            print("Sending start of communication message")
+            while not COMMUNICATION_STARTED:
+                data = client.receive()
+                if "A" in segment.get_flags(format(data[1], "08b")) and "S" in segment.get_flags(format(data[1], "08b")):
+                    print("Recieved start of communication")
+                    COMMUNICATION_STARTED = True
+                    CURRENT_CATEGORY = ''
+                    continue
 
+        else:
+            # while user does not input a valid category request for a valid category
+            while CURRENT_CATEGORY != "1" and CURRENT_CATEGORY != "2" and CURRENT_CATEGORY != "3" and CURRENT_CATEGORY != "4":
+                print("What type of message would you like to send? (text, file)?:")
+                print("1 -> System message")
+                print("2 -> Text message")
+                print("3 -> File message")
+                print("4 -> Quit")
+                CURRENT_CATEGORY = input("Your choice:" )
+            if CURRENT_CATEGORY == "4":
+                break
 
-        # while user does not input a valid category request for a valid category
-        while CURRENT_CATEGORY != "1" and CURRENT_CATEGORY != "2" and CURRENT_CATEGORY != "3" and CURRENT_CATEGORY != "4":
-            print("What type of message would you like to send? (text, file)?:")
-            print("1 -> System message")
-            print("2 -> Text message")
-            print("3 -> File message")
-            print("4 -> Quit")
-            CURRENT_CATEGORY = input("Your choice:" )
-        if CURRENT_CATEGORY == "4":
-            break
+            # if user wants to send a system message
+            if CURRENT_CATEGORY == "1":
+                type_of_message = system_message()
+                if type_of_message == "1":  # switch roles
+                    client.send_message(CURRENT_CATEGORY, [W], '')
+                    CURRENT_CATEGORY = ''
+                    continue
+                elif type_of_message == "2":
+                    CURRENT_CATEGORY = ''
+                    continue
 
-        # if user wants to send a system message
-        if CURRENT_CATEGORY == "1":
-            type_of_message = system_message()
-            if type_of_message == "1":  # switch roles
-                client.send_message(CURRENT_CATEGORY, [W], '')
-                CURRENT_CATEGORY = ''
-                continue
-            elif type_of_message == "2":
-                CURRENT_CATEGORY = ''
-                continue
-
-        # if user wants to send a text message
-        elif CURRENT_CATEGORY == "2":
-            client.send_message(CURRENT_CATEGORY, [N], 'fragment size info will be here')  # sending message about new stream
-            if text_message() == 'x':
-                client.send_message(CURRENT_CATEGORY, [C], '')  # sending message about complete stream
-                CURRENT_CATEGORY = ''
-                continue
+            # if user wants to send a text message
+            elif CURRENT_CATEGORY == "2":
+                client.send_message(CURRENT_CATEGORY, [N], 'fragment size info will be here')  # sending message about new stream
+                if text_message() == 'x':
+                    client.send_message(CURRENT_CATEGORY, [C], '')  # sending message about complete stream
+                    CURRENT_CATEGORY = ''
+                    continue
 
         # TODO ADD FILE SENDING
         # print("Input your message: ")

@@ -12,6 +12,17 @@ N = '01000000'  # new stream of data
 C = '10000000'  # Complete stream of data
 
 
+FLAGS = {
+    1: "C",
+    2: "N",
+    3: "W",
+    4: "K",
+    5: "P",
+    6: "F",
+    7: "A",
+    8: "S"
+}
+
 # creating header consisting of category, falgs, fragment number, and checksum
 # Category will contain the type of message being sent 0x01 for system messages like keep alive, syn, fin, etc.
 # 0x02 for text messages and 0x03 for file messages
@@ -63,3 +74,13 @@ def check_checksum(data):
         return True
     else:
         return False
+
+
+def get_flags(flags):
+    all_flags = []
+    i = 1
+    for f in flags:
+        if f == "1":
+            all_flags.append(FLAGS[i])
+        i += 1
+    return all_flags
