@@ -5,6 +5,8 @@ import time
 import os
 import zlib
 
+import segment
+
 
 SERVER_IP = "127.0.0.1"
 SERVER_PORT = 50601
@@ -44,7 +46,6 @@ FULL_TEXT_MESSAGE = ""
 GETTING_FILE_MESSAGE = False
 
 
-
 class Server:
     def __init__(self, ip, port) -> None:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP socket creation
@@ -58,7 +59,8 @@ class Server:
             data, self.client = self.socket.recvfrom(1024)  # buffer size is 1024 bytes
             # self.client_last_keep_alive = time.time()
 
-        if self.check_checksum(data):
+        # Check checksum before processing segment
+        if segment.check_checksum(data):
             if not GETTING_TEXT_MESSAGE:
                 server.listening_text_message(data)
             elif GETTING_TEXT_MESSAGE:
@@ -80,7 +82,6 @@ class Server:
         # print("Message: ", data[2::].decode("utf-8"))
         return data
 
-
     def listen_to_communication_start(self, data):
         global COMMUNICATION_STARTED
         if data[0] == 1:
@@ -88,19 +89,6 @@ class Server:
                 print("Recieved start of communication")
                 COMMUNICATION_STARTED = True
                 self.send_response()
-    def creating_checksum(self, message):
-        checksum = zlib.crc32(bytes(message, "utf-8"))
-        checksum = struct.pack("!I", checksum)
-        return checksum
-
-    def check_checksum(self, data):
-        checksum = data[4:8]
-        message = data[8::].decode("utf-8")
-        calculated_checksum = self.creating_checksum(message)
-        if checksum == calculated_checksum:
-            return True
-        else:
-            return False
 
     def get_flags(self, flags):
         all_flags = []
@@ -170,7 +158,6 @@ if __name__ == "__main__":
             server.send_response()
 
         data = server.receive()
-
 
     server.send_last_response()
     server.quit()

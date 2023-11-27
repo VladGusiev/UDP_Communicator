@@ -5,6 +5,9 @@ import struct
 import os
 import zlib
 
+import sys
+import segment
+
 CLIENT_IP = "127.0.0.1"
 CLIENT_PORT = 50602
 
@@ -47,63 +50,10 @@ class Client:
 
     def send_message(self, category, flags, message):
 
-        checksum = self.creating_checksum(message)
-        message = self.creating_category(category) + self.creating_flags(flags) + self.creating_fragment_number(1) + checksum + message.encode("utf-8")
+        checksum = segment.creating_checksum(message)
+        message = segment.creating_category(category) + segment.creating_flags(flags) + segment.creating_fragment_number(1) + checksum + message.encode("utf-8")
 
         self.socket.sendto(message, (self.server_ip, self.server_port))
-
-    # creating header consisting of category, falgs, fragment number, and checksum
-    # Category will contain the type of message being sent 0x01 for system messages like keep alive, syn, fin, etc.
-    # 0x02 for text messages and 0x03 for file messages
-    # Flags will contain the flags for the message like ACK, SYN, FIN, where each flag is a bit in the flags byte
-    # Fragment number will contain the number of the fragment being sent
-    # Checksum will contain the checksum of the message being sent
-    def creating_category(self, category):
-        if category == "1":
-            category = 0x01
-        elif category == "2":
-            category = 0x02
-        elif category == "3":
-            category = 0x03
-
-        category = struct.pack("!B", category)
-        return category
-
-
-    def creating_flags(self, flags_list):
-        if len(flags_list) == 1:
-            flags = struct.pack("!B", int(flags_list[0], 2))
-        else:
-            # add all flags together in binary form, flags is a list of flags
-            flags = int(flags_list[0], 2)
-            for i in range(1, len(flags_list)):
-                flags = flags + int(flags_list[i], 2)
-            flags = struct.pack("!B", flags)
-        return flags
-
-
-    # fragment number will take 2 bytes to represent the fragment number
-    def creating_fragment_number(self, fragment_number):
-        fragment_number = struct.pack("!H", fragment_number)
-        return fragment_number
-
-
-    def creating_checksum(self, data):
-        checksum = zlib.crc32(bytes(data, "utf-8"))
-        checksum = struct.pack("!I", checksum)
-        return checksum
-
-
-
-
-    # def creating_checksum(self, data):
-    #     print("original data: ", data)
-    #     print("crc32: ", zlib.crc32(bytes(data, "utf-8")))
-    #     checksum = zlib.crc32(bytes(data, "utf-8"))
-    #     checksum = str('{0:032b}'.format(checksum))
-    #     checksum = bytes(int(checksum[i: i + 8], 2) for i in range(0, len(checksum), 8))
-    #
-    #     return checksum
 
     # # KEEP ALIVE
     # def keep_alive(self):
