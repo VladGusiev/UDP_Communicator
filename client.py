@@ -21,6 +21,7 @@ KEEP_ALIVE_MESSAGE = struct.pack("!B", 0x06)
 
 # for resending packets that were not acknowledged
 TIMEOUT_INTERVAL = 5  # seconds
+UNACKNOWLEDGED_KEEP_LIVE = 0
 
 
 # all flags values
@@ -38,6 +39,7 @@ CURRENT_CATEGORY = ""
 
 class Client:
     def __init__(self, ip, port, server_ip, server_port) -> None:
+        # self.keep_alive_thread = None
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP socket creation
 
         self.server_ip = server_ip
@@ -46,9 +48,41 @@ class Client:
         self.ip = ip
         self.port = port
 
+        self.keep_alive_thread = threading.Thread(target=self.keep_alive)
+        self.keep_alive_thread.daemon = True
+
+    def start_keep_alive(self):
+        self.keep_alive_thread.start()
+
+    def keep_alive(self):
+        global UNACKNOWLEDGED_KEEP_LIVE
+        while True:
+            if UNACKNOWLEDGED_KEEP_LIVE == 3:
+                print("\nServer is not responding... closing connection")
+                break
+            else:
+                time.sleep(KEEP_ALIVE_INTERVAL)
+                if COMMUNICATION_STARTED:
+                    self.send_message("1", [K], 'Keep Alive')
+                    UNACKNOWLEDGED_KEEP_LIVE += 1
+                    self.receive()
+            print("CURRENT UNACKNOWLEDGED_KEEP_LIVE: ", UNACKNOWLEDGED_KEEP_LIVE)
+        client.quit()
+
     def receive(self):
+        global UNACKNOWLEDGED_KEEP_LIVE
+
         data = None
         data, self.server = self.socket.recvfrom(1024)  # buffer size is 1024 bytes
+
+
+        # check if server sent back ack
+        if data[0] == 1:
+            if "A" in segment.get_flags(format(data[1], "08b")) and "K" in segment.get_flags(
+                    format(data[1], "08b")):
+                # print("Recieved keep alive ack")
+                UNACKNOWLEDGED_KEEP_LIVE = 0
+                print("UNACKNOWLEDGED_KEEP_LIVE: ", UNACKNOWLEDGED_KEEP_LIVE)
         return data
 
     def send_message(self, category, flags, message):
@@ -57,16 +91,6 @@ class Client:
         message = segment.creating_category(category) + segment.creating_flags(flags) + segment.creating_fragment_number(1) + checksum + message.encode("utf-8")
 
         self.socket.sendto(message, (self.server_ip, self.server_port))
-
-    # # KEEP ALIVE
-    # def keep_alive(self):
-    #     while True:
-    #         self.socket.sendto(KEEP_ALIVE_MESSAGE, (self.server_ip, self.server_port))
-    #         time.sleep(KEEP_ALIVE_INTERVAL)
-    #
-    # def start_keep_alive(self):
-    #     self.keep_alive_thread = threading.Thread(target=self.keep_alive)
-    #     self.keep_alive_thread.start()
 
     # QUIT
     def quit(self):
@@ -101,7 +125,7 @@ def text_message():
 
 if __name__ == "__main__":
     client = Client(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT)
-    # client.start_keep_alive()
+    client.start_keep_alive()
     data = "empty"
 
     while data != "End connection message recieved... closing connection":
