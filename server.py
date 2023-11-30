@@ -4,17 +4,19 @@ import threading
 import time
 import os
 import zlib
+import sys
 
 import segment
 
 
-SERVER_IP = "127.0.0.1"
-SERVER_PORT = 50601
+# SERVER_IP = "127.0.0.1"
+# SERVER_PORT = 50601
 
 COMMUNICATION_STARTED = False
+COMMUNICATION_TERMINATED = False
 
 KEEP_ALIVE_TIMEOUT = 10  # seconds TODO change in the future!
-KEEP_ALIVE_MESSAGE = struct.pack("!B", 0x06)
+# KEEP_ALIVE_MESSAGE = struct.pack("!B", 0x06)
 
 S = '00000001'  # Syn
 A = '00000010'  # Ack
@@ -61,22 +63,14 @@ class Server:
 
     def receive(self):
         data = None
-        while data == None:
-            data, self.client = self.socket.recvfrom(1024)  # buffer size is 1024 bytes
-            # self.client_last_keep_alive = time.time()
-
-
-        # print("Recieved message: ", data)
-        # # return str(data, encoding="utf-8")
-        # print("type: ", type(data[0]))  # integer
-        # print("data size:", len(data))
-        # print("Category: ", data[0])
-        # print("Flags raw: ", data[1])
-        # print("Flags in binary form: ", format(data[1], "08b"))
-        # print("Flags: ", self.get_flags(format(data[1], "08b")))
-        # print("Message: ", data[2::].decode("utf-8"))
-        self.client_last_seen = time.time()
-        return data
+        try:
+            while data == None:
+                data, self.client = self.socket.recvfrom(1024)  # buffer size is 1024 bytes
+                # self.client_last_keep_alive = time.time()
+            self.client_last_seen = time.time()
+            return data
+        except socket.error:
+            ...
 
     # def send_message(self, category, flags, message):
     #
@@ -87,15 +81,17 @@ class Server:
 
     def check_keep_alive_continuously(self):
         while True:
-            time.sleep(1.5)  # Adjust the sleep interval as needed
+            time.sleep(1)  # Adjust the sleep interval as needed
             self.check_keep_alive_timer()
 
     def check_keep_alive_timer(self):
+        global CONNECTION_TERMINATED, COMMUNICATION_STARTED
         current_time = time.time()
         # print("Hasn't received msg in: ", current_time - self.client_last_seen)
         if current_time - self.client_last_seen > KEEP_ALIVE_TIMEOUT:
             print("Client has timed out... closing connection")
             self.quit()
+            return
 
     def listen_to_communication_start(self, data):
         global COMMUNICATION_STARTED
@@ -118,8 +114,16 @@ class Server:
         if data[0] == 2:
             if "P" in segment.get_flags(format(data[1], "08b")):  # flag is text message
                 print("Recieved text message")
+
+                answer = segment.creating_category('2') + segment.creating_flags(
+                    [P, A]) + segment.creating_fragment_number(1) + segment.creating_checksum(
+                    'Message Received') + 'Message Received'.encode("utf-8")
+                server.socket.sendto(answer, server.client)
+
                 FULL_TEXT_MESSAGE += data[8::].decode("utf-8")
 
+
+    # TODO send ack and assemble messages on client side with removal of duplicate messages.
     def receiving_end_of_text_message(self, data):
         global FULL_TEXT_MESSAGE, GETTING_TEXT_MESSAGE
         if data[0] == 2:
@@ -138,6 +142,15 @@ class Server:
     def quit(self):
         self.socket.close()
         print("Server closed...")
+        sys.exit()
+
+    def terminate_communication(self):
+        print("Received communication termination message... closing connection")
+        message = segment.creating_category('1') + segment.creating_flags(
+            [F, A]) + segment.creating_fragment_number(1) + segment.creating_checksum(
+            'Fin') + 'Fin'.encode("utf-8")
+        self.socket.sendto(message, self.client)
+        self.quit()
 
 
 def waiting_for_connection_establishment():
@@ -165,23 +178,46 @@ def is_keep_alive_msg(data):
     return False
 
 
+def is_termination_msg(data):
+    if data[0] == 1:
+        if "F" in segment.get_flags(format(data[1], "08b")):
+            return True
+    return False
+
+
 if __name__ == "__main__":
-    server = Server(SERVER_IP, SERVER_PORT)
     # server.start_keep_alive_monitor_thread()
     data = "empty"
 
+    # print("To setup server, please enter the following information: ")
+    # server_ip = input(" - Server IP: ")
+    # server_port = int(input(" - Server Port: "))
 
-    while data != "End connection":
+    server_ip = "127.0.0.1"
+    server_port = 6060
+
+    server = Server(server_ip, server_port)
+    while not COMMUNICATION_TERMINATED:
+
         # global COMMUNICATION_STARTED, CURRENT_CATEGORY
         # TODO need to tidy up this code
         # establish communication with server and wait for server to send back syn ack. If syn ack is not received in 5 seconds, resend syn
         if not COMMUNICATION_STARTED:
             waiting_for_connection_establishment()
+            # break
         else:
+            # server need to send something, so clients receive is not stacked, counter does not increase
             if data != "empty":
                 server.send_response()
 
             data = server.receive()
+
+            if data is None:
+                continue
+
+            if is_termination_msg(data):
+                server.terminate_communication()
+                break
 
             # server.check_keep_alive(data) # check if client has timed out
 
@@ -203,5 +239,5 @@ if __name__ == "__main__":
                 print("Checksums do not match")
                 # TODO add what to do if checksums do not match (most likely ignore and wait next message)
 
-    server.send_last_response()
+    # server.send_last_response()
     server.quit()

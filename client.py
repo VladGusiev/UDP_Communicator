@@ -8,20 +8,24 @@ import sys
 
 import segment
 
-CLIENT_IP = "127.0.0.1"
-CLIENT_PORT = 50602
-
-SERVER_IP = "127.0.0.1"
-SERVER_PORT = 50601
+# CLIENT_IP = "127.0.0.1"
+# CLIENT_PORT = 50602
+#
+# SERVER_IP = "127.0.0.1"
+# SERVER_PORT = 50601
 
 COMMUNICATION_STARTED = False
+COMMUNICATION_TERMINATED = False
 
-KEEP_ALIVE_INTERVAL = 5  # seconds
-KEEP_ALIVE_MESSAGE = struct.pack("!B", 0x06)
+# for sending keep alive messages
+KEEP_ALIVE_INTERVAL = 3  # seconds
+UNACKNOWLEDGED_KEEP_LIVE = 0
+MAX_UNACKNOWLEDGED_KEEP_LIVE = 5
 
 # for resending packets that were not acknowledged
-TIMEOUT_INTERVAL = 5  # seconds
-UNACKNOWLEDGED_KEEP_LIVE = 0
+SEGMENT_RESEND_INTERVAL = 6 # seconds
+IS_WAITING_FOR_ACK = False
+
 
 
 # all flags values
@@ -56,34 +60,86 @@ class Client:
 
     def keep_alive(self):
         global UNACKNOWLEDGED_KEEP_LIVE
-        while True:
-            if UNACKNOWLEDGED_KEEP_LIVE == 3:
+        while not COMMUNICATION_TERMINATED:
+            if UNACKNOWLEDGED_KEEP_LIVE >= 5:
                 print("\nServer is not responding... closing connection")
                 break
             else:
-                time.sleep(KEEP_ALIVE_INTERVAL)
                 if COMMUNICATION_STARTED:
-                    self.send_message("1", [K], 'Keep Alive')
-                    UNACKNOWLEDGED_KEEP_LIVE += 1
-                    self.receive()
-            print("CURRENT UNACKNOWLEDGED_KEEP_LIVE: ", UNACKNOWLEDGED_KEEP_LIVE)
-        client.quit()
+                    # TODO this does not work because the server is closed and the client is still trying to send keep alive messages
+                    time.sleep(KEEP_ALIVE_INTERVAL)
+                    if COMMUNICATION_STARTED:
+                        self.send_message("1", [K], 'Keep Alive')
+                        UNACKNOWLEDGED_KEEP_LIVE += 1
+                        self.receive()
+                # print("CURRENT UNACKNOWLEDGED_KEEP_LIVE: ", UNACKNOWLEDGED_KEEP_LIVE)
+        self.quit()
 
     def receive(self):
-        global UNACKNOWLEDGED_KEEP_LIVE
-
+        global UNACKNOWLEDGED_KEEP_LIVE, COMMUNICATION_TERMINATED, IS_WAITING_FOR_ACK
         data = None
-        data, self.server = self.socket.recvfrom(1024)  # buffer size is 1024 bytes
+        try:
+            while data == None:
+                data, self.server = self.socket.recvfrom(1024)  # buffer size is 1024 bytes
 
+            if IS_WAITING_FOR_ACK:
+                if data[0] == 2:
+                    if "A" in segment.get_flags(format(data[1], "08b")) and "P" in segment.get_flags(
+                            format(data[1], "08b")):
+                        IS_WAITING_FOR_ACK = False
+                        print("Received ack for text message")
+            # check if server sent back ack
+            if data[0] == 1:
+                if "A" in segment.get_flags(format(data[1], "08b")) and "K" in segment.get_flags(
+                        format(data[1], "08b")):
+                    # print("Recieved keep alive ack")
+                    UNACKNOWLEDGED_KEEP_LIVE = 0
+                    # print("UNACKNOWLEDGED_KEEP_LIVE: ", UNACKNOWLEDGED_KEEP_LIVE)
 
-        # check if server sent back ack
-        if data[0] == 1:
-            if "A" in segment.get_flags(format(data[1], "08b")) and "K" in segment.get_flags(
-                    format(data[1], "08b")):
-                # print("Recieved keep alive ack")
-                UNACKNOWLEDGED_KEEP_LIVE = 0
-                print("UNACKNOWLEDGED_KEEP_LIVE: ", UNACKNOWLEDGED_KEEP_LIVE)
-        return data
+                if "A" in segment.get_flags(format(data[1], "08b")) and "F" in segment.get_flags(format(data[1], "08b")):
+                    print("Received acknowledge to end of communication")
+                    COMMUNICATION_TERMINATED = True
+                    self.quit()
+            return data
+
+        except socket.error:
+            ...
+            # print("Server is not responding... closing connection")
+            # self.quit()
+
+    # TODO add fragmenting, sending message about new stram and message about complete stream so server can reassemble
+    def send_text_message(self):
+        global CURRENT_CATEGORY, IS_WAITING_FOR_ACK
+
+        self.send_message(CURRENT_CATEGORY, [N],
+                            'fragment size info will be here')  # sending message about new stream
+
+        print("Input your message: ")
+        # sending message to server
+        user_message = input()
+        self.send_message(CURRENT_CATEGORY, [P], user_message)
+        IS_WAITING_FOR_ACK = True
+
+        # waiting for ack
+        segment_sent_time = time.time()
+        while IS_WAITING_FOR_ACK:
+            if time.time() - segment_sent_time >= SEGMENT_RESEND_INTERVAL:
+                print("Resending text message...")
+                self.send_message(CURRENT_CATEGORY, [P], user_message)
+                segment_sent_time = time.time()
+            time.sleep(1)
+
+            self.receive()
+
+            # data = self.receive()
+            # if data[0] == 2:
+            #     if "A" in segment.get_flags(format(data[1], "08b")) and "P" in segment.get_flags(
+            #             format(data[1], "08b")):
+            #         IS_WAITING_FOR_ACK = False
+            #         print("Received ack for text message")
+            #         break
+
+        client.send_message(CURRENT_CATEGORY, [C], '')  # sending message about complete stream
 
     def send_message(self, category, flags, message):
 
@@ -92,16 +148,32 @@ class Client:
 
         self.socket.sendto(message, (self.server_ip, self.server_port))
 
+
+    def terminate_communication(self):
+        global COMMUNICATION_TERMINATED
+        print("Would you like to terminate communication? (y/n):")
+        terminate = input("Your choice:")
+        if terminate == "y":
+            client.send_message("1", [F], 'Fin')
+            # data = client.receive()
+            # if "A" in segment.get_flags(format(data[1], "08b")) and "F" in segment.get_flags(format(data[1], "08b")):
+            #     print("Received acknowledge to end of communication")
+            #     COMMUNICATION_TERMINATED = True
+            return True
+        elif terminate == "n":
+            return False
+
     # QUIT
     def quit(self):
         self.socket.close()
         print("Client closed...")
+        sys.exit()
 
 
 def system_message():
     print("What type of system message would you like to send?:")
     print("1 -> Switch roles")
-    print("2 -> Quit")
+    print("2 -> Go back to main menu")
     system_message = input("Your choice:")
     if system_message == "1":
         return '1'
@@ -110,25 +182,34 @@ def system_message():
         return '2'
 
 
-# TODO add fragmenting, sending message about new stram and message about complete stream so sevrer can reassemble
-def text_message():
-    print("Type you messages here. Type 'xxx' to end sending messages.")
-    user_message = input()
-    while user_message != "xxx":
-        client.send_message(CURRENT_CATEGORY, [P], user_message)
-        data = client.receive()
-        print(data)
-        user_message = input()
-    if user_message == "xxx":
-        return 'x'
+
+
+
+# if send_text_message() == 'x':
+
+# CURRENT_CATEGORY = ''
+# continue
 
 
 if __name__ == "__main__":
-    client = Client(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT)
+
+    print("To setup client, please enter the following information: ")
+
+    # client_ip = input(" - Client IP: ")
+    # client_port = int(input(" - Client Port: "))
+    # server_ip = input(" - Server IP: ")
+    # server_port = int(input(" - Server Port: "))
+
+    client_ip = "127.0.0.1"
+    client_port = 6061
+    server_ip = "127.0.0.1"
+    server_port = 6060
+
+    client = Client(client_ip, client_port, server_ip, server_port)
     client.start_keep_alive()
     data = "empty"
 
-    while data != "End connection message recieved... closing connection":
+    while not COMMUNICATION_TERMINATED:
         # global COMMUNICATION_STARTED, CURRENT_CATEGORY
         # establish communication with server and wait for server to send back syn ack. If syn ack is not received in 5 seconds, resend syn
         if not COMMUNICATION_STARTED:
@@ -149,10 +230,11 @@ if __name__ == "__main__":
                 print("1 -> System message")
                 print("2 -> Text message")
                 print("3 -> File message")
-                print("4 -> Quit")
-                CURRENT_CATEGORY = input("Your choice:" )
+                print("4 -> Terminate communication")
+                CURRENT_CATEGORY = input("Your choice: ")
             if CURRENT_CATEGORY == "4":
-                break
+                if client.terminate_communication():
+                    break
 
             # if user wants to send a system message
             if CURRENT_CATEGORY == "1":
@@ -167,11 +249,15 @@ if __name__ == "__main__":
 
             # if user wants to send a text message
             elif CURRENT_CATEGORY == "2":
-                client.send_message(CURRENT_CATEGORY, [N], 'fragment size info will be here')  # sending message about new stream
-                if text_message() == 'x':
-                    client.send_message(CURRENT_CATEGORY, [C], '')  # sending message about complete stream
-                    CURRENT_CATEGORY = ''
-                    continue
+                client.send_text_message()
+                CURRENT_CATEGORY = ''
+
+                # client.send_message(CURRENT_CATEGORY, [N], 'fragment size info will be here')  # sending message about new stream
+                # if send_text_message() == 'x':
+                    # client.send_message(CURRENT_CATEGORY, [C], '')  # sending message about complete stream
+                    # CURRENT_CATEGORY = ''
+                    # continue
+
 
         # TODO ADD FILE SENDING
         # print("Input your message: ")
@@ -179,4 +265,4 @@ if __name__ == "__main__":
         # data = client.receive()
         # print(data)
 
-    client.quit()
+    # client.quit()
