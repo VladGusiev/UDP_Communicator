@@ -69,7 +69,7 @@ class Client:
                     # TODO this does not work because the server is closed and the client is still trying to send keep alive messages
                     time.sleep(KEEP_ALIVE_INTERVAL)
                     if COMMUNICATION_STARTED:
-                        self.send_message("1", [K], 'Keep Alive')
+                        self.send_message("1", [K], 1, 'Keep Alive')
                         UNACKNOWLEDGED_KEEP_LIVE += 1
                         self.receive()
                 # print("CURRENT UNACKNOWLEDGED_KEEP_LIVE: ", UNACKNOWLEDGED_KEEP_LIVE)
@@ -111,40 +111,49 @@ class Client:
     def send_text_message(self):
         global CURRENT_CATEGORY, IS_WAITING_FOR_ACK
 
-        self.send_message(CURRENT_CATEGORY, [N],
+        current_fragment_number = 0
+        fragment_size = input("Input fragment size: ")
+        while not fragment_size.isdigit():
+            print("Fragment size must be a number")
+            fragment_size = input("Input fragment size: ")
+
+        fragment_size = int(fragment_size)
+
+        self.send_message(CURRENT_CATEGORY, [N], current_fragment_number,
                             'fragment size info will be here')  # sending message about new stream
 
         print("Input your message: ")
         # sending message to server
         user_message = input()
-        self.send_message(CURRENT_CATEGORY, [P], user_message)
-        IS_WAITING_FOR_ACK = True
 
-        # waiting for ack
-        segment_sent_time = time.time()
-        while IS_WAITING_FOR_ACK:
-            if time.time() - segment_sent_time >= SEGMENT_RESEND_INTERVAL:
-                print("Resending text message...")
-                self.send_message(CURRENT_CATEGORY, [P], user_message)
-                segment_sent_time = time.time()
-            time.sleep(1)
+        # fragmenting message
+        fragments = []
+        for i in range(0, len(user_message), fragment_size):
+            fragments.append(user_message[i:i + fragment_size])
 
-            self.receive()
+        # sending fragments
+        for i in range(len(fragments)):
+            self.send_message(CURRENT_CATEGORY, [P], i+1, fragments[i])
+            IS_WAITING_FOR_ACK = True
 
-            # data = self.receive()
-            # if data[0] == 2:
-            #     if "A" in segment.get_flags(format(data[1], "08b")) and "P" in segment.get_flags(
-            #             format(data[1], "08b")):
-            #         IS_WAITING_FOR_ACK = False
-            #         print("Received ack for text message")
-            #         break
+            # waiting for ack
+            segment_sent_time = time.time()
+            while IS_WAITING_FOR_ACK:
+                if time.time() - segment_sent_time >= SEGMENT_RESEND_INTERVAL:
+                    print("Resending text message...")
+                    self.send_message(CURRENT_CATEGORY, [P], i+1, fragments[i])
+                    segment_sent_time = time.time()
+                time.sleep(1)
 
-        client.send_message(CURRENT_CATEGORY, [C], '')  # sending message about complete stream
+                self.receive()
+            current_fragment_number += 1
 
-    def send_message(self, category, flags, message):
+        client.send_message(CURRENT_CATEGORY, [C], current_fragment_number,  'End of transmission')  # sending message about complete stream
+
+    def send_message(self, category, flags, frag_num, message):
 
         checksum = segment.creating_checksum(message)
-        message = segment.creating_category(category) + segment.creating_flags(flags) + segment.creating_fragment_number(1) + checksum + message.encode("utf-8")
+        message = segment.creating_category(category) + segment.creating_flags(flags) + segment.creating_fragment_number(frag_num) + checksum + message.encode("utf-8")
 
         self.socket.sendto(message, (self.server_ip, self.server_port))
 
@@ -154,7 +163,7 @@ class Client:
         print("Would you like to terminate communication? (y/n):")
         terminate = input("Your choice:")
         if terminate == "y":
-            client.send_message("1", [F], 'Fin')
+            self.send_message("1", [F], 1, 'Fin')
             # data = client.receive()
             # if "A" in segment.get_flags(format(data[1], "08b")) and "F" in segment.get_flags(format(data[1], "08b")):
             #     print("Received acknowledge to end of communication")
@@ -213,7 +222,7 @@ if __name__ == "__main__":
         # global COMMUNICATION_STARTED, CURRENT_CATEGORY
         # establish communication with server and wait for server to send back syn ack. If syn ack is not received in 5 seconds, resend syn
         if not COMMUNICATION_STARTED:
-            client.send_message("1", [S], '')
+            client.send_message("1", [S], 1, '')
             print("Sending start of communication message")
             while not COMMUNICATION_STARTED:
                 data = client.receive()
@@ -240,7 +249,7 @@ if __name__ == "__main__":
             if CURRENT_CATEGORY == "1":
                 type_of_message = system_message()
                 if type_of_message == "1":  # switch roles
-                    client.send_message(CURRENT_CATEGORY, [W], '')
+                    client.send_message(CURRENT_CATEGORY, [W], 1, '')
                     CURRENT_CATEGORY = ''
                     continue
                 elif type_of_message == "2":

@@ -45,7 +45,7 @@ CATEGORIES = {
 }
 
 GETTING_TEXT_MESSAGE = False
-FULL_TEXT_MESSAGE = ""
+FULL_TEXT_MESSAGE = []
 
 GETTING_FILE_MESSAGE = False
 
@@ -115,12 +115,23 @@ class Server:
             if "P" in segment.get_flags(format(data[1], "08b")):  # flag is text message
                 print("Recieved text message")
 
+                print("Text message: ", data[8::].decode("utf-8"))
+                print("Fragment number: ", data[2:4])
+
+                # check if message is duplicate
+                for message in FULL_TEXT_MESSAGE:
+                    if data[2:4] == message[1]:
+                        print("Duplicate message")
+                        return
+
+                FULL_TEXT_MESSAGE.append([data[8::].decode("utf-8"), data[2:4]])
+
                 answer = segment.creating_category('2') + segment.creating_flags(
                     [P, A]) + segment.creating_fragment_number(1) + segment.creating_checksum(
                     'Message Received') + 'Message Received'.encode("utf-8")
                 server.socket.sendto(answer, server.client)
 
-                FULL_TEXT_MESSAGE += data[8::].decode("utf-8")
+
 
 
     # TODO send ack and assemble messages on client side with removal of duplicate messages.
@@ -130,8 +141,12 @@ class Server:
             if "C" in segment.get_flags(format(data[1], "08b")):  # flag is end of text message
                 print("Recieved end of text message")
                 GETTING_TEXT_MESSAGE = False
-                print("Full text message: ", FULL_TEXT_MESSAGE)
-                FULL_TEXT_MESSAGE = ""
+
+                print("Full text message: ", end="")
+                for message in FULL_TEXT_MESSAGE:
+                    print(message[0], end="")
+
+                FULL_TEXT_MESSAGE = []
 
     def send_response(self):
         self.socket.sendto(b"Message recieved...", self.client)
