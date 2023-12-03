@@ -48,6 +48,8 @@ GETTING_TEXT_MESSAGE = False
 FULL_TEXT_MESSAGE = []
 
 GETTING_FILE_MESSAGE = False
+FULL_FILE_MESSAGE = []
+FILE_NAME = ""
 
 
 class Server:
@@ -65,7 +67,7 @@ class Server:
         data = None
         try:
             while data == None:
-                data, self.client = self.socket.recvfrom(1024)  # buffer size is 1024 bytes
+                data, self.client = self.socket.recvfrom(1464)  # buffer size is 1024 bytes
                 # self.client_last_keep_alive = time.time()
             self.client_last_seen = time.time()
             return data
@@ -107,13 +109,17 @@ class Server:
             if "N" in segment.get_flags(format(data[1], "08b")):  # flags is start of text message
                 print("Recieved start of text message")
                 GETTING_TEXT_MESSAGE = True
-        # print("Text message: ", data)
 
     def receiving_text_message(self, data):
         global FULL_TEXT_MESSAGE
         if data[0] == 2:
             if "P" in segment.get_flags(format(data[1], "08b")):  # flag is text message
                 print("Recieved text message")
+
+                text_answer = segment.creating_category('2') + segment.creating_flags(
+                    [P, A]) + segment.creating_fragment_number(1) + segment.creating_checksum(
+                    'Text Message Received') + 'Text Message Received'.encode("utf-8")
+                server.socket.sendto(text_answer, server.client)
 
                 print("Text message: ", data[8::].decode("utf-8"))
                 print("Fragment number: ", data[2:4])
@@ -123,15 +129,7 @@ class Server:
                     if data[2:4] == message[1]:
                         print("Duplicate message")
                         return
-
                 FULL_TEXT_MESSAGE.append([data[8::].decode("utf-8"), data[2:4]])
-
-                answer = segment.creating_category('2') + segment.creating_flags(
-                    [P, A]) + segment.creating_fragment_number(1) + segment.creating_checksum(
-                    'Message Received') + 'Message Received'.encode("utf-8")
-                server.socket.sendto(answer, server.client)
-
-
 
 
     # TODO send ack and assemble messages on client side with removal of duplicate messages.
@@ -147,6 +145,51 @@ class Server:
                     print(message[0], end="")
 
                 FULL_TEXT_MESSAGE = []
+
+    def listening_file_message(self, data):
+        global GETTING_FILE_MESSAGE, FILE_NAME
+        if data[0] == 3:
+            if "N" in segment.get_flags(format(data[1], "08b")):
+                print("Received start of file message")
+                GETTING_FILE_MESSAGE = True
+                FILE_NAME = data[8::].decode("utf-8")
+
+    # method to receive file messages from client
+    def receiving_file_message(self, data):
+        global FULL_FILE_MESSAGE
+        if data[0] == 3:
+            if "P" in segment.get_flags(format(data[1], "08b")):
+                print("Recieved file message")
+
+                file_answer = segment.creating_category('3') + segment.creating_flags(
+                    [P, A]) + segment.creating_fragment_number(1) + segment.creating_checksum(
+                    'File Message Received') + 'File Message Received'.encode("utf-8")
+                server.socket.sendto(file_answer, server.client)
+
+                print("File message: ", data[8::])
+                print("Fragment number: ", data[2:4])
+
+                # check if message is duplicate
+                for message in FULL_FILE_MESSAGE:
+                    if data[2:4] == message[1]:
+                        print("Duplicate message")
+                        return
+                FULL_FILE_MESSAGE.append([data[8::], data[2:4]])
+
+    # receive end of file message from client and save file to specified location
+    def receiving_end_of_file_message(self, data):
+        global FULL_FILE_MESSAGE, GETTING_FILE_MESSAGE, FILE_NAME
+        if data[0] == 3:
+            if "C" in segment.get_flags(format(data[1], "08b")):
+                print("Recieved end of file message")
+                GETTING_FILE_MESSAGE = False
+
+                f_write = open(FILE_NAME, "wb")
+                for packet in FULL_FILE_MESSAGE:
+                    f_write.write(packet[0])
+                f_write.close()
+
+                FULL_FILE_MESSAGE = []
 
     def send_response(self):
         self.socket.sendto(b"Message recieved...", self.client)
@@ -221,7 +264,7 @@ if __name__ == "__main__":
             waiting_for_connection_establishment()
             # break
         else:
-            # server need to send something, so clients receive is not stacked, counter does not increase
+            # server need to send something, so clients receive does not stack the process, time counter does not increase
             if data != "empty":
                 server.send_response()
 
@@ -250,6 +293,13 @@ if __name__ == "__main__":
                 elif GETTING_TEXT_MESSAGE:
                     server.receiving_text_message(data)
                     server.receiving_end_of_text_message(data)
+
+                if not GETTING_FILE_MESSAGE:
+                    server.listening_file_message(data)
+                elif GETTING_FILE_MESSAGE:
+                    server.receiving_file_message(data)
+                    server.receiving_end_of_file_message(data)
+
             else:
                 print("Checksums do not match")
                 # TODO add what to do if checksums do not match (most likely ignore and wait next message)

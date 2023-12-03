@@ -18,7 +18,7 @@ COMMUNICATION_STARTED = False
 COMMUNICATION_TERMINATED = False
 
 # for sending keep alive messages
-KEEP_ALIVE_INTERVAL = 3  # seconds
+KEEP_ALIVE_INTERVAL = 5  # seconds (bigger number faster transmission)
 UNACKNOWLEDGED_KEEP_LIVE = 0
 MAX_UNACKNOWLEDGED_KEEP_LIVE = 5
 
@@ -80,15 +80,15 @@ class Client:
         data = None
         try:
             while data == None:
-                data, self.server = self.socket.recvfrom(1024)  # buffer size is 1024 bytes
+                data, self.server = self.socket.recvfrom(1464)
 
             if IS_WAITING_FOR_ACK:
-                if data[0] == 2:
+                if data[0] == 2 or data[0] == 3:
                     if "A" in segment.get_flags(format(data[1], "08b")) and "P" in segment.get_flags(
                             format(data[1], "08b")):
                         IS_WAITING_FOR_ACK = False
-                        print("Received ack for text message")
-            # check if server sent back ack
+                        print("Received ack for text/file message")
+            # check if server sent back ack for keep alive message
             if data[0] == 1:
                 if "A" in segment.get_flags(format(data[1], "08b")) and "K" in segment.get_flags(
                         format(data[1], "08b")):
@@ -148,7 +148,7 @@ class Client:
                 self.receive()
             current_fragment_number += 1
 
-        client.send_message(CURRENT_CATEGORY, [C], current_fragment_number,  'End of transmission')  # sending message about complete stream
+        self.send_message(CURRENT_CATEGORY, [C], current_fragment_number,  'End of transmission')  # sending message about complete stream
 
     def send_message(self, category, flags, frag_num, message):
 
@@ -156,6 +156,68 @@ class Client:
         message = segment.creating_category(category) + segment.creating_flags(flags) + segment.creating_fragment_number(frag_num) + checksum + message.encode("utf-8")
 
         self.socket.sendto(message, (self.server_ip, self.server_port))
+
+    # C:\Users\someuser\Desktop\pypy_40k_2.png
+    def send_message_file_format(self, category, flags, frag_num, message):
+        checksum = segment.creating_file_checksum(message)
+        message = segment.creating_category(category) + segment.creating_flags(
+            flags) + segment.creating_fragment_number(frag_num) + checksum + message
+
+        self.socket.sendto(message, (self.server_ip, self.server_port))
+
+    def send_file_message(self):
+        global CURRENT_CATEGORY, IS_WAITING_FOR_ACK
+
+        file_path = input("Input file path: ")
+        while not os.path.isfile(file_path):
+            print("File does not exist")
+            file_path = input("Input file path: ")
+
+
+        file_size = os.path.getsize(file_path)
+        print("File size: ", file_size)
+
+        file = open(file_path, "rb")
+
+        # sending message about new stream
+        self.send_message(CURRENT_CATEGORY, [N], 0, os.path.basename(file_path))
+
+        # sending file
+        current_fragment_number = 1
+
+        fragment_size = input("Input fragment size: ")
+        while not fragment_size.isdigit():
+            print("Fragment size must be a number")
+            fragment_size = input("Input fragment size: ")
+
+        fragment_size = int(fragment_size)
+
+
+        # Fragment file into 1024 byte fragments
+        fragments = []
+        for i in range(0, file_size, fragment_size):
+            fragments.append(file.read(fragment_size))
+
+        # sending fragments
+        for i in range(len(fragments)):
+            self.send_message_file_format(CURRENT_CATEGORY, [P], i + 1, fragments[i])
+            IS_WAITING_FOR_ACK = True
+
+            # waiting for ack
+            segment_sent_time = time.time()
+            while IS_WAITING_FOR_ACK:
+                if time.time() - segment_sent_time >= SEGMENT_RESEND_INTERVAL:
+                    print("Resending text message...")
+                    self.send_message_file_format(CURRENT_CATEGORY, [P], i + 1, fragments[i])
+                    segment_sent_time = time.time()
+                time.sleep(1)
+
+                self.receive()
+            current_fragment_number += 1
+
+        self.send_message(CURRENT_CATEGORY, [C], current_fragment_number,
+                            'End of transmission')  # sending message about complete stream
+
 
 
     def terminate_communication(self):
@@ -191,13 +253,6 @@ def system_message():
         return '2'
 
 
-
-
-
-# if send_text_message() == 'x':
-
-# CURRENT_CATEGORY = ''
-# continue
 
 
 if __name__ == "__main__":
@@ -261,11 +316,10 @@ if __name__ == "__main__":
                 client.send_text_message()
                 CURRENT_CATEGORY = ''
 
-                # client.send_message(CURRENT_CATEGORY, [N], 'fragment size info will be here')  # sending message about new stream
-                # if send_text_message() == 'x':
-                    # client.send_message(CURRENT_CATEGORY, [C], '')  # sending message about complete stream
-                    # CURRENT_CATEGORY = ''
-                    # continue
+            # if user wants to send a file message
+            elif CURRENT_CATEGORY == "3":
+                client.send_file_message()
+                CURRENT_CATEGORY = ''
 
 
         # TODO ADD FILE SENDING

@@ -66,14 +66,34 @@ def creating_checksum(data):
     return checksum
 
 
+def creating_file_checksum(data):
+    checksum = zlib.crc32(data)
+    checksum = struct.pack("!I", checksum)
+    return checksum
+
+
 def check_checksum(data):
     checksum = data[4:8]
-    message = data[8::].decode("utf-8")
-    calculated_checksum = creating_checksum(message)
+    try:
+        message = data[8::].decode("utf-8")
+        calculated_checksum = creating_checksum(message)
+    except UnicodeDecodeError:
+        message = data[8::]
+        calculated_checksum = creating_file_checksum(message)
     if checksum == calculated_checksum:
         return True
     else:
         return False
+
+
+# def check_file_checksum(data):
+#     checksum = data[4:8]
+#     message = data[8::]
+#     calculated_checksum = creating_file_checksum(message)
+#     if checksum == calculated_checksum:
+#         return True
+#     else:
+#         return False
 
 
 def get_flags(flags):
