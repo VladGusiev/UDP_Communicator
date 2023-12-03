@@ -1,5 +1,6 @@
 import struct
 import zlib
+import random
 
 # all flags values
 S = '00000001'  # Syn
@@ -61,12 +62,21 @@ def creating_fragment_number(fragment_number):
 
 
 def creating_checksum(data):
+    # in 99 times out of 100, checksum will be created correctly
+    # but in the 1 time, it will be created incorrectly
+    # this is to simulate a corrupted packet
+    if random.randint(0, 100) == 1:
+        checksum = b'\x00\x00\x00\x00'
+        return checksum
     checksum = zlib.crc32(bytes(data, "utf-8"))
     checksum = struct.pack("!I", checksum)
     return checksum
 
 
 def creating_file_checksum(data):
+    if random.randint(0, 100) == 1:
+        checksum = b'\x00\x00\x00\x00'
+        return checksum
     checksum = zlib.crc32(data)
     checksum = struct.pack("!I", checksum)
     return checksum
@@ -76,24 +86,16 @@ def check_checksum(data):
     checksum = data[4:8]
     try:
         message = data[8::].decode("utf-8")
-        calculated_checksum = creating_checksum(message)
+        calculated_checksum = zlib.crc32(bytes(message, "utf-8"))
+        calculated_checksum = struct.pack("!I", calculated_checksum)
     except UnicodeDecodeError:
         message = data[8::]
-        calculated_checksum = creating_file_checksum(message)
+        calculated_checksum = zlib.crc32(message)
+        calculated_checksum = struct.pack("!I", calculated_checksum)
     if checksum == calculated_checksum:
         return True
     else:
         return False
-
-
-# def check_file_checksum(data):
-#     checksum = data[4:8]
-#     message = data[8::]
-#     calculated_checksum = creating_file_checksum(message)
-#     if checksum == calculated_checksum:
-#         return True
-#     else:
-#         return False
 
 
 def get_flags(flags):

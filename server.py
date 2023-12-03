@@ -50,6 +50,8 @@ FULL_TEXT_MESSAGE = []
 
 GETTING_FILE_MESSAGE = False
 FULL_FILE_MESSAGE = []
+
+FILE_PATH = "."  # by default pycharm will save files in the same directory as the project
 FILE_NAME = ""
 
 
@@ -64,6 +66,11 @@ class Server:
         self.timeout_thread.daemon = True
         self.timeout_thread.start()
 
+        # check user input to change directory, where to store files
+        self.user_input = threading.Thread(target=self.check_user_input_continuously)
+        self.user_input.daemon = True
+        self.user_input.start()
+
     def receive(self):
         data = None
         try:
@@ -75,15 +82,33 @@ class Server:
         except socket.error:
             ...
 
-    # def send_message(self, category, flags, message):
-    #
-    #     checksum = segment.creating_checksum(message)
-    #     message = segment.creating_category(category) + segment.creating_flags(flags) + segment.creating_fragment_number(1) + checksum + message.encode("utf-8")
-    #
-    #     self.socket.sendto(message,  self.client)
+    def check_user_input_continuously(self):
+        while not COMMUNICATION_TERMINATED and not SERVER_TIMED_OUT:
+            self.check_user_input()
+            # time.sleep(0.1)
+        # sys.exit()
+
+    def check_user_input(self):
+        global FILE_PATH, COMMUNICATION_TERMINATED, SERVER_TIMED_OUT
+        if COMMUNICATION_TERMINATED or SERVER_TIMED_OUT:
+            return
+        user_input = ""
+        while user_input != "s" and user_input != "c":
+            user_input = input("Enter 's' to show save location or 'c' to change it : \n")
+            if user_input == "s":
+                print("Current save location: ", FILE_PATH, "\n")
+            elif user_input == "c":
+                while not os.path.exists(user_input):
+                    user_input = input("Enter new save location: ")
+                FILE_PATH = user_input
+                print("Save location changed to: ", FILE_PATH, "\n")
+            return
+
+
 
     def check_keep_alive_continuously(self):
-        while True:
+        global COMMUNICATION_TERMINATED, SERVER_TIMED_OUT
+        while not COMMUNICATION_TERMINATED and not SERVER_TIMED_OUT:
             time.sleep(1)  # Adjust the sleep interval as needed
             self.check_keep_alive_timer()
 
@@ -135,7 +160,6 @@ class Server:
                 FULL_TEXT_MESSAGE.append([data[8::].decode("utf-8"), data[2:4]])
 
 
-    # TODO send ack and assemble messages on client side with removal of duplicate messages.
     def receiving_end_of_text_message(self, data):
         global FULL_TEXT_MESSAGE, GETTING_TEXT_MESSAGE
         if data[0] == 2:
@@ -181,19 +205,19 @@ class Server:
 
     # receive end of file message from client and save file to specified location
     def receiving_end_of_file_message(self, data):
-        global FULL_FILE_MESSAGE, GETTING_FILE_MESSAGE, FILE_NAME
+        global FULL_FILE_MESSAGE, GETTING_FILE_MESSAGE, FILE_NAME, FILE_PATH
         if data[0] == 3:
             if "C" in segment.get_flags(format(data[1], "08b")):
                 print("Recieved end of file message")
                 GETTING_FILE_MESSAGE = False
 
-                f_write = open(FILE_NAME, "wb")
+                f_write = open(FILE_PATH + '\\' + FILE_NAME, "wb")
                 for packet in FULL_FILE_MESSAGE:
                     f_write.write(packet[0])
                 f_write.close()
 
                 FULL_FILE_MESSAGE = []
-
+                # C:\Users\someuser\Desktop\pks_try
     def send_response(self):
         self.socket.sendto(b"Message recieved...", self.client)
 
@@ -202,15 +226,20 @@ class Server:
 
     def quit(self):
         self.socket.close()
+        # self.timeout_thread.join()
+        self.user_input.join()
         print("Server closed...")
+        # os._exit(1)
         sys.exit()
 
     def terminate_communication(self):
+        global COMMUNICATION_TERMINATED
         print("Received communication termination message... closing connection")
         message = segment.creating_category('1') + segment.creating_flags(
             [F, A]) + segment.creating_fragment_number(1) + segment.creating_checksum(
             'Fin') + 'Fin'.encode("utf-8")
         self.socket.sendto(message, self.client)
+        COMMUNICATION_TERMINATED = True
         self.quit()
 
 
@@ -262,6 +291,7 @@ if __name__ == "__main__":
     server_port = 6060
 
     server = Server(server_ip, server_port)
+    print("After end of communication, due to timeout or termination, type anything to close server...")
     while not COMMUNICATION_TERMINATED and not SERVER_TIMED_OUT:
 
 

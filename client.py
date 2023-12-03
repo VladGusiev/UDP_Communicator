@@ -24,9 +24,11 @@ MAX_UNACKNOWLEDGED_KEEP_LIVE = 5
 CLIENT_TIMED_OUT = False
 
 # for resending packets that were not acknowledged
-SEGMENT_RESEND_INTERVAL = 6 # seconds
+SEGMENT_RESEND_INTERVAL = 1.5  # seconds
 IS_WAITING_FOR_ACK = False
 
+CURRENT_UNACKNOWLEDGED_SEGMENTS = 0
+MAX_UNACKNOWLEDGED_SEGMENTS = 5
 
 
 # all flags values
@@ -79,7 +81,7 @@ class Client:
         self.quit()
 
     def receive(self):
-        global UNACKNOWLEDGED_KEEP_LIVE, COMMUNICATION_TERMINATED, IS_WAITING_FOR_ACK
+        global UNACKNOWLEDGED_KEEP_LIVE, COMMUNICATION_TERMINATED, IS_WAITING_FOR_ACK, CURRENT_UNACKNOWLEDGED_SEGMENTS
         data = None
         try:
             while data == None:
@@ -90,6 +92,7 @@ class Client:
                     if "A" in segment.get_flags(format(data[1], "08b")) and "P" in segment.get_flags(
                             format(data[1], "08b")):
                         IS_WAITING_FOR_ACK = False
+                        CURRENT_UNACKNOWLEDGED_SEGMENTS = 0
                         print("Received ack for text/file message")
             # check if server sent back ack for keep alive message
             if data[0] == 1:
@@ -112,7 +115,7 @@ class Client:
 
     # TODO add fragmenting, sending message about new stram and message about complete stream so server can reassemble
     def send_text_message(self):
-        global CURRENT_CATEGORY, IS_WAITING_FOR_ACK
+        global CURRENT_CATEGORY, IS_WAITING_FOR_ACK, MAX_UNACKNOWLEDGED_SEGMENTS, SEGMENT_RESEND_INTERVAL, CLIENT_TIMED_OUT, COMMUNICATION_TERMINATED, CURRENT_UNACKNOWLEDGED_SEGMENTS
 
         current_fragment_number = 0
         fragment_size = input("Input fragment size: ")
@@ -142,6 +145,11 @@ class Client:
             # waiting for ack
             segment_sent_time = time.time()
             while IS_WAITING_FOR_ACK:
+                if CURRENT_UNACKNOWLEDGED_SEGMENTS >= MAX_UNACKNOWLEDGED_SEGMENTS:
+                    # print("Server is not responding... closing connection")
+                    CLIENT_TIMED_OUT = True
+                    COMMUNICATION_TERMINATED = True
+                    break
                 if time.time() - segment_sent_time >= SEGMENT_RESEND_INTERVAL:
                     print("Resending text message...")
                     self.send_message(CURRENT_CATEGORY, [P], i+1, fragments[i])
@@ -169,13 +177,12 @@ class Client:
         self.socket.sendto(message, (self.server_ip, self.server_port))
 
     def send_file_message(self):
-        global CURRENT_CATEGORY, IS_WAITING_FOR_ACK
+        global CURRENT_CATEGORY, IS_WAITING_FOR_ACK, MAX_UNACKNOWLEDGED_SEGMENTS, SEGMENT_RESEND_INTERVAL, CLIENT_TIMED_OUT, COMMUNICATION_TERMINATED, CURRENT_UNACKNOWLEDGED_SEGMENTS
 
         file_path = input("Input file path: ")
         while not os.path.isfile(file_path):
             print("File does not exist")
             file_path = input("Input file path: ")
-
 
         file_size = os.path.getsize(file_path)
         print("File size: ", file_size)
@@ -196,10 +203,10 @@ class Client:
         fragment_size = int(fragment_size)
 
 
-        # Fragment file into 1024 byte fragments
         fragments = []
         for i in range(0, file_size, fragment_size):
             fragments.append(file.read(fragment_size))
+        print("Number of fragments: ", len(fragments))
 
         # sending fragments
         for i in range(len(fragments)):
@@ -209,9 +216,15 @@ class Client:
             # waiting for ack
             segment_sent_time = time.time()
             while IS_WAITING_FOR_ACK:
+                if CURRENT_UNACKNOWLEDGED_SEGMENTS >= MAX_UNACKNOWLEDGED_SEGMENTS:
+                    # print("Server is not responding... closing connection")
+                    CLIENT_TIMED_OUT = True
+                    COMMUNICATION_TERMINATED = True
+                    break
                 if time.time() - segment_sent_time >= SEGMENT_RESEND_INTERVAL:
                     print("Resending text message...")
                     self.send_message_file_format(CURRENT_CATEGORY, [P], i + 1, fragments[i])
+                    CURRENT_UNACKNOWLEDGED_SEGMENTS += 1
                     segment_sent_time = time.time()
                 # time.sleep(1)
 
@@ -327,12 +340,3 @@ if __name__ == "__main__":
             elif CURRENT_CATEGORY == "3":
                 client.send_file_message()
                 CURRENT_CATEGORY = ''
-
-
-        # TODO ADD FILE SENDING
-        # print("Input your message: ")
-        # client.send_message(CURRENT_CATEGORY, input())
-        # data = client.receive()
-        # print(data)
-
-    # client.quit()
