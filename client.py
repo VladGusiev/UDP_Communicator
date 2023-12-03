@@ -21,6 +21,7 @@ COMMUNICATION_TERMINATED = False
 KEEP_ALIVE_INTERVAL = 5  # seconds (bigger number faster transmission)
 UNACKNOWLEDGED_KEEP_LIVE = 0
 MAX_UNACKNOWLEDGED_KEEP_LIVE = 5
+CLIENT_TIMED_OUT = False
 
 # for resending packets that were not acknowledged
 SEGMENT_RESEND_INTERVAL = 6 # seconds
@@ -59,10 +60,12 @@ class Client:
         self.keep_alive_thread.start()
 
     def keep_alive(self):
-        global UNACKNOWLEDGED_KEEP_LIVE
+        global UNACKNOWLEDGED_KEEP_LIVE, CLIENT_TIMED_OUT, COMMUNICATION_TERMINATED, COMMUNICATION_STARTED
         while not COMMUNICATION_TERMINATED:
             if UNACKNOWLEDGED_KEEP_LIVE >= 5:
                 print("\nServer is not responding... closing connection")
+                CLIENT_TIMED_OUT = True
+                COMMUNICATION_TERMINATED = True
                 break
             else:
                 if COMMUNICATION_STARTED:
@@ -143,7 +146,7 @@ class Client:
                     print("Resending text message...")
                     self.send_message(CURRENT_CATEGORY, [P], i+1, fragments[i])
                     segment_sent_time = time.time()
-                time.sleep(1)
+                # time.sleep(1)
 
                 self.receive()
             current_fragment_number += 1
@@ -210,7 +213,7 @@ class Client:
                     print("Resending text message...")
                     self.send_message_file_format(CURRENT_CATEGORY, [P], i + 1, fragments[i])
                     segment_sent_time = time.time()
-                time.sleep(1)
+                # time.sleep(1)
 
                 self.receive()
             current_fragment_number += 1
@@ -273,7 +276,7 @@ if __name__ == "__main__":
     client.start_keep_alive()
     data = "empty"
 
-    while not COMMUNICATION_TERMINATED:
+    while not COMMUNICATION_TERMINATED and not CLIENT_TIMED_OUT:
         # global COMMUNICATION_STARTED, CURRENT_CATEGORY
         # establish communication with server and wait for server to send back syn ack. If syn ack is not received in 5 seconds, resend syn
         if not COMMUNICATION_STARTED:
@@ -289,13 +292,17 @@ if __name__ == "__main__":
 
         else:
             # while user does not input a valid category request for a valid category
-            while CURRENT_CATEGORY != "1" and CURRENT_CATEGORY != "2" and CURRENT_CATEGORY != "3" and CURRENT_CATEGORY != "4":
+            while CURRENT_CATEGORY != "1" and CURRENT_CATEGORY != "2" and CURRENT_CATEGORY != "3" and CURRENT_CATEGORY != "4" and not CLIENT_TIMED_OUT and not COMMUNICATION_TERMINATED:
                 print("What type of message would you like to send? (text, file)?:")
                 print("1 -> System message")
                 print("2 -> Text message")
                 print("3 -> File message")
                 print("4 -> Terminate communication")
                 CURRENT_CATEGORY = input("Your choice: ")
+
+            if CLIENT_TIMED_OUT or COMMUNICATION_TERMINATED:
+                break
+
             if CURRENT_CATEGORY == "4":
                 if client.terminate_communication():
                     break

@@ -16,6 +16,7 @@ COMMUNICATION_STARTED = False
 COMMUNICATION_TERMINATED = False
 
 KEEP_ALIVE_TIMEOUT = 10  # seconds TODO change in the future!
+SERVER_TIMED_OUT = False
 # KEEP_ALIVE_MESSAGE = struct.pack("!B", 0x06)
 
 S = '00000001'  # Syn
@@ -66,7 +67,7 @@ class Server:
     def receive(self):
         data = None
         try:
-            while data == None:
+            while data is None:
                 data, self.client = self.socket.recvfrom(1464)  # buffer size is 1024 bytes
                 # self.client_last_keep_alive = time.time()
             self.client_last_seen = time.time()
@@ -87,11 +88,13 @@ class Server:
             self.check_keep_alive_timer()
 
     def check_keep_alive_timer(self):
-        global CONNECTION_TERMINATED, COMMUNICATION_STARTED
+        global CONNECTION_TERMINATED, COMMUNICATION_STARTED, SERVER_TIMED_OUT
         current_time = time.time()
         # print("Hasn't received msg in: ", current_time - self.client_last_seen)
         if current_time - self.client_last_seen > KEEP_ALIVE_TIMEOUT:
             print("Client has timed out... closing connection")
+            SERVER_TIMED_OUT = True
+            CONNECTION_TERMINATED = True
             self.quit()
             return
 
@@ -216,6 +219,10 @@ def waiting_for_connection_establishment():
     print("Waiting for start of communication message...")
     while not COMMUNICATION_STARTED:
         data = server.receive()
+
+        if data is None:
+            break
+
         if "S" in segment.get_flags(format(data[1], "08b")):
             print("Received start of communication message, sending response...")
 
@@ -255,7 +262,8 @@ if __name__ == "__main__":
     server_port = 6060
 
     server = Server(server_ip, server_port)
-    while not COMMUNICATION_TERMINATED:
+    while not COMMUNICATION_TERMINATED and not SERVER_TIMED_OUT:
+
 
         # global COMMUNICATION_STARTED, CURRENT_CATEGORY
         # TODO need to tidy up this code
