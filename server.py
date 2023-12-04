@@ -17,7 +17,7 @@ import handler
 COMMUNICATION_STARTED = False
 COMMUNICATION_TERMINATED = False
 
-KEEP_ALIVE_TIMEOUT = 10  # seconds TODO change in the future!
+KEEP_ALIVE_TIMEOUT = 15  # seconds TODO change in the future!
 SERVER_TIMED_OUT = False
 # KEEP_ALIVE_MESSAGE = struct.pack("!B", 0x06)
 
@@ -88,7 +88,7 @@ class Server:
 
             segment.CLIENT_INFO = tuple()
             segment.CLIENT_INFO = self.client
-            print("Client info: ", segment.CLIENT_INFO)
+            # print("Client info: ", segment.CLIENT_INFO)
 
             return data
         except socket.error:
@@ -109,9 +109,9 @@ class Server:
             if keyboard.is_pressed('['):
                 print("Current save location: ", FILE_PATH, "\n")
             elif keyboard.is_pressed(']'):
-                FILE_PATH = input("Enter new save location: ")
+                FILE_PATH = input("\nEnter new save location: ")
                 while not os.path.exists(FILE_PATH):
-                    FILE_PATH = input("Enter new save location: ")
+                    FILE_PATH = input("\nEnter new save location: ")
                 print("Save location changed to: ", FILE_PATH, "\n")
             elif keyboard.is_pressed(';'):
                 # send swap roles message
@@ -119,10 +119,9 @@ class Server:
                 message = segment.creating_category('1') + segment.creating_flags(
                     [W]) + segment.creating_fragment_number(1) + segment.creating_checksum('Swap roles') + 'Swap roles'.encode("utf-8")
                 self.socket.sendto(message, self.client)
-                return
+                # return
             elif keyboard.is_pressed("/"):
-                print("All received files: ", ALL_FILES_RECEIVED)
-
+                print("\nAll received files: ", ALL_FILES_RECEIVED)
         except:
             ...
         # while user_input != "s" and user_input != "c":
@@ -199,13 +198,15 @@ class Server:
                 print("Text message: ", data[8::].decode("utf-8"))
                 print("Fragment number: ", data[2:4])
 
+                full_string = data[8::].decode("utf-8")
+                text_message = full_string.split("***")
+                print("Only needed text message: ", text_message[0])
                 # check if message is duplicate
                 for message in FULL_TEXT_MESSAGE:
                     if data[2:4] == message[1]:
                         print("Duplicate message")
                         return
-                FULL_TEXT_MESSAGE.append([data[8::].decode("utf-8"), data[2:4]])
-
+                FULL_TEXT_MESSAGE.append([text_message[0], data[2:4]])
 
     def receiving_end_of_text_message(self, data):
         global FULL_TEXT_MESSAGE, GETTING_TEXT_MESSAGE
@@ -215,10 +216,9 @@ class Server:
                 GETTING_TEXT_MESSAGE = False
                 full_string = ""
 
-                print("Full text message: ", end="")
                 for message in FULL_TEXT_MESSAGE:
-                    print(message[0], end="")
                     full_string += message[0]
+                print("Full text message: ", full_string)
 
                 FULL_TEXT_MESSAGE = []
 
@@ -270,7 +270,7 @@ class Server:
                 FULL_FILE_MESSAGE = []
 
                 ALL_FILES_RECEIVED.append(["Full path: " + FILE_PATH + '\\' + FILE_NAME, "Size of file: " + str(os.path.getsize(FILE_PATH + '\\' + FILE_NAME)), "Fragments number: " + str(int.from_bytes(data[2:4], byteorder='big')-1)])
-                print("All files received: ", ALL_FILES_RECEIVED)
+                # print("All files received: ", ALL_FILES_RECEIVED)
                 # C:\Users\someuser\Desktop\pks_try
     def send_response(self):
         self.socket.sendto(b"Message recieved...", self.client)
@@ -282,7 +282,7 @@ class Server:
         self.socket.close()
         # self.timeout_thread.join()
         self.user_input.join()
-        print("Server closed...")
+        print("\nServer closed...")
         # os._exit(1)
         # sys.exit()
 
@@ -294,7 +294,7 @@ class Server:
             'Fin') + 'Fin'.encode("utf-8")
         self.socket.sendto(message, self.client)
         COMMUNICATION_TERMINATED = True
-        self.quit()
+        # self.quit()
 
     def waiting_for_connection_establishment(self):
         global data, COMMUNICATION_STARTED
@@ -330,7 +330,7 @@ class Server:
         SWAP_ROLES = True
         FILE_PATH = "."
         FILE_NAME = ""
-        self.quit()
+        # self.quit()
 
     def swap_roles2(self):
         global COMMUNICATION_STARTED, COMMUNICATION_TERMINATED, SWAP_ROLES, FILE_PATH, FILE_NAME
@@ -341,7 +341,7 @@ class Server:
         SWAP_ROLES = True
         FILE_PATH = "."
         FILE_NAME = ""
-        self.quit()
+        # self.quit()
 
 
 def is_keep_alive_msg(data):
@@ -376,13 +376,6 @@ def is_confirming_swap_roles_msg(data):
 def start_server(server_ip, server_port):
     # server.start_keep_alive_monitor_thread()
     data = "empty"
-
-    # print("To setup server, please enter the following information: ")
-    # server_ip = input(" - Server IP: ")
-    # server_port = int(input(" - Server Port: "))
-
-    # server_ip = "127.0.0.1"
-    # server_port = 6060
 
     server = Server(server_ip, server_port)
     print("After end of communication, due to timeout or termination, type anything to close server...")

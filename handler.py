@@ -30,7 +30,7 @@ def main():
     while client.SWAP_ROLES or server.SWAP_ROLES:
         host_name = socket.gethostname()
         host_ip = socket.gethostbyname(host_name)
-        print("Client info: ", segment.CLIENT_INFO)
+        # print("Client info: ", segment.CLIENT_INFO)
         reset_all()
         if CURRENT_ROLE == "c":
             CURRENT_ROLE = "s"
