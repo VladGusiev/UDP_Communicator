@@ -9,12 +9,6 @@ import sys
 import segment
 import handler
 
-# CLIENT_IP = "127.0.0.1"
-# CLIENT_PORT = 50602
-#
-# SERVER_IP = "127.0.0.1"
-# SERVER_PORT = 50601
-
 COMMUNICATION_STARTED = False
 COMMUNICATION_TERMINATED = False
 
@@ -51,15 +45,11 @@ CURRENT_CATEGORY = ""
 
 class Client:
     def __init__(self, server_ip, server_port) -> None:
-        # self.keep_alive_thread = None
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP socket creation
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.settimeout(0)
 
         self.server_ip = server_ip
         self.server_port = server_port
-
-        # self.ip = ip
-        # self.port = port
 
         self.keep_alive_thread = threading.Thread(target=self.keep_alive)
         self.keep_alive_thread.daemon = True
@@ -84,8 +74,6 @@ class Client:
                         self.send_message("1", [K], 1, 'Keep Alive')
                         UNACKNOWLEDGED_KEEP_LIVE += 1
                         self.receive()
-                    # print("CURRENT UNACKNOWLEDGED_KEEP_LIVE: ", UNACKNOWLEDGED_KEEP_LIVE)
-        # self.keep_alive_thread.join()
         self.quit()
 
     def receive(self):
@@ -96,7 +84,6 @@ class Client:
                 data, self.server = self.socket.recvfrom(1472)
 
             if IS_WAITING_FOR_ACK:
-                # print("is was here")
                 if data[0] == 2 or data[0] == 3:
                     if "A" in segment.get_flags(format(data[1], "08b")) and "P" in segment.get_flags(
                             format(data[1], "08b")):
@@ -118,9 +105,7 @@ class Client:
                     self.quit()
                 if "A" in segment.get_flags(format(data[1], "08b")) and "K" in segment.get_flags(
                         format(data[1], "08b")):
-                    # print("Received keep alive ack")
                     UNACKNOWLEDGED_KEEP_LIVE = 0
-                    # print("UNACKNOWLEDGED_KEEP_LIVE: ", UNACKNOWLEDGED_KEEP_LIVE)
                 if "A" in segment.get_flags(format(data[1], "08b")) and "W" in segment.get_flags(
                         format(data[1], "08b")):
                     print("\nReceived swap confirmation")
@@ -142,10 +127,7 @@ class Client:
 
         except socket.error:
             ...
-            # print("Server is not responding... closing connection")
-            # self.quit()
 
-    # TODO add fragmenting, sending message about new stram and message about complete stream so server can reassemble
     def send_text_message(self):
         global CURRENT_CATEGORY, IS_WAITING_FOR_ACK, MAX_UNACKNOWLEDGED_SEGMENTS, SEGMENT_RESEND_INTERVAL, CLIENT_TIMED_OUT, COMMUNICATION_TERMINATED, CURRENT_UNACKNOWLEDGED_SEGMENTS
 
@@ -183,7 +165,6 @@ class Client:
             segment_sent_time = time.time()
             while IS_WAITING_FOR_ACK:
                 if CURRENT_UNACKNOWLEDGED_SEGMENTS >= MAX_UNACKNOWLEDGED_SEGMENTS:
-                    # print("Server is not responding... closing connection")
                     CLIENT_TIMED_OUT = True
                     COMMUNICATION_TERMINATED = True
                     break
@@ -205,7 +186,6 @@ class Client:
 
         self.socket.sendto(message, (self.server_ip, self.server_port))
 
-    # C:\Users\someuser\Desktop\pypy_40k_2.png
     def send_message_file_format(self, category, flags, frag_num, message):
         checksum = segment.creating_file_checksum(message)
         message = segment.creating_category(category) + segment.creating_flags(
@@ -256,7 +236,6 @@ class Client:
             segment_sent_time = time.time()
             while IS_WAITING_FOR_ACK:
                 if CURRENT_UNACKNOWLEDGED_SEGMENTS >= MAX_UNACKNOWLEDGED_SEGMENTS:
-                    # print("Server is not responding... closing connection")
                     CLIENT_TIMED_OUT = True
                     COMMUNICATION_TERMINATED = True
                     break
@@ -265,7 +244,6 @@ class Client:
                     self.send_message_file_format(CURRENT_CATEGORY, [P], i + 1, fragments[i])
                     CURRENT_UNACKNOWLEDGED_SEGMENTS += 1
                     segment_sent_time = time.time()
-                # time.sleep(1)
 
                 self.receive()
             current_fragment_number += 1
@@ -281,10 +259,6 @@ class Client:
             self.send_message("1", [F], 1, 'Fin')
             self.receive()
             CURRENT_CATEGORY = ''
-            # data = client.receive()
-            # if "A" in segment.get_flags(format(data[1], "08b")) and "F" in segment.get_flags(format(data[1], "08b")):
-            #     print("Received acknowledge to end of communication")
-            #     COMMUNICATION_TERMINATED = True
             return True
         elif terminate == "n":
             CURRENT_CATEGORY = ''
@@ -293,7 +267,6 @@ class Client:
     # QUIT
     def quit(self):
         self.socket.close()
-        # self.keep_alive_thread.join()
         print("\nClient closed...Please enter any key to proceed")
         sys.exit()
 
@@ -306,7 +279,6 @@ def system_message():
     if system_message == "1":
         return '1'
     else:
-        # CURRENT_CATEGORY = ''
         return '2'
 
 
@@ -326,10 +298,6 @@ def start_client(server_ip, server_port):
             IS_WAITING_FOR_ACK = True
             print("Sending start of communication message")
             while not COMMUNICATION_STARTED:
-
-                # # todo add resending if connect msg
-                # if data == None:
-                #     continue
 
                 # waiting for ack
                 segment_sent_time = time.time()

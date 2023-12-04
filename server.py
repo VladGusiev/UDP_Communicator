@@ -10,16 +10,11 @@ import keyboard
 import segment
 import handler
 
-
-# SERVER_IP = "127.0.0.1"
-# SERVER_PORT = 50601
-
 COMMUNICATION_STARTED = False
 COMMUNICATION_TERMINATED = False
 
-KEEP_ALIVE_TIMEOUT = 15  # seconds TODO change in the future!
+KEEP_ALIVE_TIMEOUT = 15  # seconds
 SERVER_TIMED_OUT = False
-# KEEP_ALIVE_MESSAGE = struct.pack("!B", 0x06)
 
 S = '00000001'  # Syn
 A = '00000010'  # Ack
@@ -63,9 +58,8 @@ ALL_FILES_RECEIVED = []
 
 class Server:
     def __init__(self, ip, port) -> None:
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP socket creation
-        self.socket.bind((ip, port))  # needs to be a tuple
-        # self.socket.settimeout(0)
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.socket.bind((ip, port))
 
         # KEPP ALIVE
         self.client_last_seen = time.time()
@@ -83,12 +77,10 @@ class Server:
         try:
             while data is None:
                 data, self.client = self.socket.recvfrom(1472)  # buffer size is 1024 bytes
-                # self.client_last_keep_alive = time.time()
             self.client_last_seen = time.time()
 
             segment.CLIENT_INFO = tuple()
             segment.CLIENT_INFO = self.client
-            # print("Client info: ", segment.CLIENT_INFO)
 
             return data
         except socket.error:
@@ -97,8 +89,6 @@ class Server:
     def check_user_input_continuously(self):
         while not COMMUNICATION_TERMINATED and not SERVER_TIMED_OUT:
             self.check_user_input()
-            # time.sleep(0.1)
-        # sys.exit()
 
     def check_user_input(self):
         global FILE_PATH, COMMUNICATION_TERMINATED, SERVER_TIMED_OUT
@@ -124,44 +114,17 @@ class Server:
                 print("\nAll received files: ", ALL_FILES_RECEIVED)
         except:
             ...
-        # while user_input != "s" and user_input != "c":
-        #     user_input = input("Enter 's' to show save location or 'c' to change it : \n")
-        #     if user_input == "s":
-        #         print("Current save location: ", FILE_PATH, "\n")
-        #     elif user_input == "c":
-        #         while not os.path.exists(user_input):
-        #             user_input = input("Enter new save location: ")
-        #         FILE_PATH = user_input
-        #         print("Save location changed to: ", FILE_PATH, "\n")
-        #     return
 
     def check_keep_alive_continuously(self):
         global COMMUNICATION_TERMINATED, SERVER_TIMED_OUT, SWAP_ROLES
-        # if SWAP_ROLES:                 # TODO тут не работает
-        #     self.timeout_thread.join()
-        #     return
         while not COMMUNICATION_TERMINATED and not SERVER_TIMED_OUT:
-            # if SWAP_ROLES:                       # TODO тут не работает
-                # self.timeout_thread.join()
-                # SERVER_TIMED_OUT = True
-                # COMMUNICATION_TERMINATED = True
-                # self.quit()
-                # return
-            time.sleep(1)  # Adjust the sleep interval as needed
+            time.sleep(1)
             self.check_keep_alive_timer()
-        # self.timeout_thread.join()  # TODO тут нельзя!
 
     def check_keep_alive_timer(self):
         global COMMUNICATION_TERMINATED, COMMUNICATION_STARTED, SERVER_TIMED_OUT, SWAP_ROLES
-        # if SWAP_ROLES:
-            # self.timeout_thread.join()   # TODO тут нельзя!
-            # SERVER_TIMED_OUT = True
-            # COMMUNICATION_TERMINATED = True
-            # self.timeout_thread.join()
-            # self.quit()
-            # return
+
         current_time = time.time()
-        # print("Hasn't received msg in: ", current_time - self.client_last_seen)
         if current_time - self.client_last_seen > KEEP_ALIVE_TIMEOUT:
             print("Client has timed out... closing connection")
             SERVER_TIMED_OUT = True
@@ -179,9 +142,9 @@ class Server:
 
     def listening_text_message(self, data):
         global GETTING_TEXT_MESSAGE
-        if data[0] == 2:  # category is correct
+        if data[0] == 2:
             if "N" in segment.get_flags(format(data[1], "08b")):  # flags is start of text message
-                print("Recieved start of text message")
+                print("Received start of text message")
                 GETTING_TEXT_MESSAGE = True
 
     def receiving_text_message(self, data):
@@ -212,7 +175,7 @@ class Server:
         global FULL_TEXT_MESSAGE, GETTING_TEXT_MESSAGE
         if data[0] == 2:
             if "C" in segment.get_flags(format(data[1], "08b")):  # flag is end of text message
-                print("Recieved end of text message")
+                print("Received end of text message")
                 GETTING_TEXT_MESSAGE = False
                 full_string = ""
 
@@ -270,21 +233,17 @@ class Server:
                 FULL_FILE_MESSAGE = []
 
                 ALL_FILES_RECEIVED.append(["Full path: " + FILE_PATH + '\\' + FILE_NAME, "Size of file: " + str(os.path.getsize(FILE_PATH + '\\' + FILE_NAME)), "Fragments number: " + str(int.from_bytes(data[2:4], byteorder='big')-1)])
-                # print("All files received: ", ALL_FILES_RECEIVED)
-                # C:\Users\someuser\Desktop\pks_try
+
     def send_response(self):
-        self.socket.sendto(b"Message recieved...", self.client)
+        self.socket.sendto(b"Message received...", self.client)
 
     def send_last_response(self):
-        self.socket.sendto(b"End connection message recieved... closing connection", self.client)
+        self.socket.sendto(b"End connection message received... closing connection", self.client)
 
     def quit(self):
         self.socket.close()
-        # self.timeout_thread.join()
         self.user_input.join()
         print("\nServer closed...")
-        # os._exit(1)
-        # sys.exit()
 
     def terminate_communication(self):
         global COMMUNICATION_TERMINATED
@@ -294,7 +253,6 @@ class Server:
             'Fin') + 'Fin'.encode("utf-8")
         self.socket.sendto(message, self.client)
         COMMUNICATION_TERMINATED = True
-        # self.quit()
 
     def waiting_for_connection_establishment(self):
         global data, COMMUNICATION_STARTED
@@ -330,7 +288,6 @@ class Server:
         SWAP_ROLES = True
         FILE_PATH = "."
         FILE_NAME = ""
-        # self.quit()
 
     def swap_roles2(self):
         global COMMUNICATION_STARTED, COMMUNICATION_TERMINATED, SWAP_ROLES, FILE_PATH, FILE_NAME
@@ -341,13 +298,11 @@ class Server:
         SWAP_ROLES = True
         FILE_PATH = "."
         FILE_NAME = ""
-        # self.quit()
 
 
 def is_keep_alive_msg(data):
     if data[0] == 1:
         if "K" in segment.get_flags(format(data[1], "08b")):
-            # print("Recieved keep alive message")
             return True
     return False
 
@@ -374,25 +329,16 @@ def is_confirming_swap_roles_msg(data):
 
 
 def start_server(server_ip, server_port):
-    # server.start_keep_alive_monitor_thread()
     data = "empty"
 
     server = Server(server_ip, server_port)
     print("After end of communication, due to timeout or termination, type anything to close server...")
     while not COMMUNICATION_TERMINATED and not SERVER_TIMED_OUT:
 
-
-        # global COMMUNICATION_STARTED, CURRENT_CATEGORY
-        # TODO need to tidy up this code
-        # establish communication with server and wait for server to send back syn ack. If syn ack is not received in 5 seconds, resend syn
+        # establish communication with server and wait for server to send back syn ack.
         if not COMMUNICATION_STARTED:
             server.waiting_for_connection_establishment()
-            # break
         else:
-            # server need to send something, so clients receive does not stack the process, time counter does not increase
-            # if data != "empty":
-            #     server.send_response()
-
             data = server.receive()
 
             if data is None:
@@ -410,8 +356,6 @@ def start_server(server_ip, server_port):
                 server.swap_roles2()
                 break
 
-            # server.check_keep_alive(data) # check if client has timed out
-
             # Check checksum before processing segment
             if segment.check_checksum(data):
                 if is_keep_alive_msg(data):
@@ -419,7 +363,6 @@ def start_server(server_ip, server_port):
                         [K, A]) + segment.creating_fragment_number(1) + segment.creating_checksum('Keep Alive') + 'Keep Alive'.encode(
                         "utf-8")
                     server.socket.sendto(message, server.client)
-                    # print("Received keep alive message")
                     continue
                 if not GETTING_TEXT_MESSAGE:
                     server.listening_text_message(data)
@@ -435,8 +378,6 @@ def start_server(server_ip, server_port):
 
             else:
                 print("Checksums do not match")
-                # TODO add what to do if checksums do not match (most likely ignore and wait next message)
-
     server.quit()
 
 

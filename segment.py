@@ -12,7 +12,6 @@ W = '00100000'  # Switch roles
 N = '01000000'  # new stream of data
 C = '10000000'  # Complete stream of data
 
-
 FLAGS = {
     1: "C",
     2: "N",
@@ -25,13 +24,6 @@ FLAGS = {
 }
 
 CLIENT_INFO = tuple()
-
-# creating header consisting of category, falgs, fragment number, and checksum
-# Category will contain the type of message being sent 0x01 for system messages like keep alive, syn, fin, etc.
-# 0x02 for text messages and 0x03 for file messages
-# Flags will contain the flags for the message like ACK, SYN, FIN, where each flag is a bit in the flags byte
-# Fragment number will contain the number of the fragment being sent
-# Checksum will contain the checksum of the message being sent
 
 def creating_category(category):
     if category == "1":
@@ -57,16 +49,12 @@ def creating_flags(flags_list):
     return flags
 
 
-# fragment number will take 2 bytes to represent the fragment number
 def creating_fragment_number(fragment_number):
     fragment_number = struct.pack("!H", fragment_number)
     return fragment_number
 
 
 def creating_checksum(data):
-    # in 99 times out of 100, checksum will be created correctly
-    # but in the 1 time, it will be created incorrectly
-    # this is to simulate a corrupted packet
     if random.randint(0, 100) == 1:
         checksum = b'\x00\x00\x00\x00'
         return checksum
