@@ -24,11 +24,13 @@ MAX_UNACKNOWLEDGED_KEEP_LIVE = 5
 CLIENT_TIMED_OUT = False
 
 # for resending packets that were not acknowledged
-SEGMENT_RESEND_INTERVAL = 1.5  # seconds
+SEGMENT_RESEND_INTERVAL = 0.5  # seconds
 IS_WAITING_FOR_ACK = False
 
 CURRENT_UNACKNOWLEDGED_SEGMENTS = 0
 MAX_UNACKNOWLEDGED_SEGMENTS = 5
+
+SWAP_ROLES = False
 
 
 # all flags values
@@ -45,15 +47,16 @@ CURRENT_CATEGORY = ""
 
 
 class Client:
-    def __init__(self, ip, port, server_ip, server_port) -> None:
+    def __init__(self, server_ip, server_port) -> None:
         # self.keep_alive_thread = None
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP socket creation
+        self.socket.settimeout(0)
 
         self.server_ip = server_ip
         self.server_port = server_port
 
-        self.ip = ip
-        self.port = port
+        # self.ip = ip
+        # self.port = port
 
         self.keep_alive_thread = threading.Thread(target=self.keep_alive)
         self.keep_alive_thread.daemon = True
@@ -62,8 +65,10 @@ class Client:
         self.keep_alive_thread.start()
 
     def keep_alive(self):
-        global UNACKNOWLEDGED_KEEP_LIVE, CLIENT_TIMED_OUT, COMMUNICATION_TERMINATED, COMMUNICATION_STARTED
+        global UNACKNOWLEDGED_KEEP_LIVE, CLIENT_TIMED_OUT, COMMUNICATION_TERMINATED, COMMUNICATION_STARTED, SWAP_ROLES
         while not COMMUNICATION_TERMINATED:
+            if SWAP_ROLES:
+                self.keep_alive_thread.join()
             if UNACKNOWLEDGED_KEEP_LIVE >= 5:
                 print("\nServer is not responding... closing connection")
                 CLIENT_TIMED_OUT = True
@@ -77,34 +82,58 @@ class Client:
                         self.send_message("1", [K], 1, 'Keep Alive')
                         UNACKNOWLEDGED_KEEP_LIVE += 1
                         self.receive()
-                # print("CURRENT UNACKNOWLEDGED_KEEP_LIVE: ", UNACKNOWLEDGED_KEEP_LIVE)
+                    # print("CURRENT UNACKNOWLEDGED_KEEP_LIVE: ", UNACKNOWLEDGED_KEEP_LIVE)
+        # self.keep_alive_thread.join()
         self.quit()
 
     def receive(self):
-        global UNACKNOWLEDGED_KEEP_LIVE, COMMUNICATION_TERMINATED, IS_WAITING_FOR_ACK, CURRENT_UNACKNOWLEDGED_SEGMENTS
+        global UNACKNOWLEDGED_KEEP_LIVE, COMMUNICATION_TERMINATED, IS_WAITING_FOR_ACK, CURRENT_UNACKNOWLEDGED_SEGMENTS, COMMUNICATION_STARTED, SWAP_ROLES
         data = None
         try:
-            while data == None:
-                data, self.server = self.socket.recvfrom(1464)
+            while data is None:
+                data, self.server = self.socket.recvfrom(1472)
 
             if IS_WAITING_FOR_ACK:
+                # print("is was here")
                 if data[0] == 2 or data[0] == 3:
                     if "A" in segment.get_flags(format(data[1], "08b")) and "P" in segment.get_flags(
                             format(data[1], "08b")):
                         IS_WAITING_FOR_ACK = False
                         CURRENT_UNACKNOWLEDGED_SEGMENTS = 0
                         print("Received ack for text/file message")
-            # check if server sent back ack for keep alive message
+                # check if server sent back ack for keep alive message
+                if data[0] == 1:
+                    if "A" in segment.get_flags(format(data[1], "08b")) and "S" in segment.get_flags(
+                            format(data[1], "08b")):
+                        print("Recieved start of communication")
+                        COMMUNICATION_STARTED = True
+                        IS_WAITING_FOR_ACK = False
+
+                    if "A" in segment.get_flags(format(data[1], "08b")) and "F" in segment.get_flags(format(data[1], "08b")):
+                        print("Received acknowledge to end of communication")
+                        COMMUNICATION_TERMINATED = True
+                        self.quit()
             if data[0] == 1:
                 if "A" in segment.get_flags(format(data[1], "08b")) and "K" in segment.get_flags(
                         format(data[1], "08b")):
-                    # print("Recieved keep alive ack")
+                    # print("Received keep alive ack")
                     UNACKNOWLEDGED_KEEP_LIVE = 0
                     # print("UNACKNOWLEDGED_KEEP_LIVE: ", UNACKNOWLEDGED_KEEP_LIVE)
-
-                if "A" in segment.get_flags(format(data[1], "08b")) and "F" in segment.get_flags(format(data[1], "08b")):
-                    print("Received acknowledge to end of communication")
+                if "A" in segment.get_flags(format(data[1], "08b")) and "W" in segment.get_flags(
+                        format(data[1], "08b")):
+                    print("Received swap confirmation")
                     COMMUNICATION_TERMINATED = True
+                    COMMUNICATION_STARTED = False
+                    IS_WAITING_FOR_ACK = False
+                    SWAP_ROLES = True
+                    self.quit()
+                if "W" in segment.get_flags(format(data[1], "08b")):
+                    self.send_message('1', [A, W], 1, 'Switch roles acknowledge')
+                    print("Received swap request")
+                    COMMUNICATION_TERMINATED = True
+                    COMMUNICATION_STARTED = False
+                    IS_WAITING_FOR_ACK = False
+                    SWAP_ROLES = True
                     self.quit()
             return data
 
@@ -121,6 +150,9 @@ class Client:
         fragment_size = input("Input fragment size: ")
         while not fragment_size.isdigit():
             print("Fragment size must be a number")
+            fragment_size = input("Input fragment size: ")
+        while int(fragment_size) > 1464:
+            print("Fragment size must be less than 1464")
             fragment_size = input("Input fragment size: ")
 
         fragment_size = int(fragment_size)
@@ -199,6 +231,9 @@ class Client:
         while not fragment_size.isdigit():
             print("Fragment size must be a number")
             fragment_size = input("Input fragment size: ")
+        while int(fragment_size) > 1464:
+            print("Fragment size must be less than 1464")
+            fragment_size = input("Input fragment size: ")
 
         fragment_size = int(fragment_size)
 
@@ -234,8 +269,6 @@ class Client:
         self.send_message(CURRENT_CATEGORY, [C], current_fragment_number,
                             'End of transmission')  # sending message about complete stream
 
-
-
     def terminate_communication(self):
         global COMMUNICATION_TERMINATED
         print("Would you like to terminate communication? (y/n):")
@@ -253,6 +286,7 @@ class Client:
     # QUIT
     def quit(self):
         self.socket.close()
+        # self.keep_alive_thread.join()
         print("Client closed...")
         sys.exit()
 
@@ -269,10 +303,8 @@ def system_message():
         return '2'
 
 
-
-
-if __name__ == "__main__":
-
+def start_client():
+    global COMMUNICATION_STARTED, CURRENT_CATEGORY, IS_WAITING_FOR_ACK, CURRENT_UNACKNOWLEDGED_SEGMENTS, SWAP_ROLES, CLIENT_TIMED_OUT, COMMUNICATION_TERMINATED
     print("To setup client, please enter the following information: ")
 
     # client_ip = input(" - Client IP: ")
@@ -280,27 +312,36 @@ if __name__ == "__main__":
     # server_ip = input(" - Server IP: ")
     # server_port = int(input(" - Server Port: "))
 
-    client_ip = "127.0.0.1"
-    client_port = 6061
+    # client_ip = "127.0.0.1"
+    # client_port = 6061
     server_ip = "127.0.0.1"
     server_port = 6060
 
-    client = Client(client_ip, client_port, server_ip, server_port)
+    client = Client(server_ip, server_port)
     client.start_keep_alive()
     data = "empty"
 
-    while not COMMUNICATION_TERMINATED and not CLIENT_TIMED_OUT:
-        # global COMMUNICATION_STARTED, CURRENT_CATEGORY
+    while not COMMUNICATION_TERMINATED and not CLIENT_TIMED_OUT and not SWAP_ROLES:
+
         # establish communication with server and wait for server to send back syn ack. If syn ack is not received in 5 seconds, resend syn
         if not COMMUNICATION_STARTED:
             client.send_message("1", [S], 1, '')
+            IS_WAITING_FOR_ACK = True
             print("Sending start of communication message")
             while not COMMUNICATION_STARTED:
-                data = client.receive()
-                if "A" in segment.get_flags(format(data[1], "08b")) and "S" in segment.get_flags(format(data[1], "08b")):
-                    print("Recieved start of communication")
-                    COMMUNICATION_STARTED = True
-                    CURRENT_CATEGORY = ''
+
+                # # todo add resending if connect msg
+                # if data == None:
+                #     continue
+
+                # waiting for ack
+                segment_sent_time = time.time()
+                while IS_WAITING_FOR_ACK:
+                    client.receive()
+                    if time.time() - segment_sent_time >= SEGMENT_RESEND_INTERVAL:
+                        print("Resending text message...")
+                        client.send_message("1", [S], 1, '')
+                        segment_sent_time = time.time()
                     continue
 
         else:
@@ -313,7 +354,7 @@ if __name__ == "__main__":
                 print("4 -> Terminate communication")
                 CURRENT_CATEGORY = input("Your choice: ")
 
-            if CLIENT_TIMED_OUT or COMMUNICATION_TERMINATED:
+            if CLIENT_TIMED_OUT or COMMUNICATION_TERMINATED or SWAP_ROLES:
                 break
 
             if CURRENT_CATEGORY == "4":
@@ -324,9 +365,10 @@ if __name__ == "__main__":
             if CURRENT_CATEGORY == "1":
                 type_of_message = system_message()
                 if type_of_message == "1":  # switch roles
-                    client.send_message(CURRENT_CATEGORY, [W], 1, '')
+                    client.send_message(CURRENT_CATEGORY, [W], 1, 'Switch roles')
+                    client.receive()
                     CURRENT_CATEGORY = ''
-                    continue
+                    # client.quit()
                 elif type_of_message == "2":
                     CURRENT_CATEGORY = ''
                     continue
@@ -340,3 +382,8 @@ if __name__ == "__main__":
             elif CURRENT_CATEGORY == "3":
                 client.send_file_message()
                 CURRENT_CATEGORY = ''
+    return
+
+
+if __name__ == "__main__":
+    start_client()

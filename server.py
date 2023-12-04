@@ -5,6 +5,7 @@ import time
 import os
 import zlib
 import sys
+import keyboard
 
 import segment
 
@@ -54,11 +55,14 @@ FULL_FILE_MESSAGE = []
 FILE_PATH = "."  # by default pycharm will save files in the same directory as the project
 FILE_NAME = ""
 
+SWAP_ROLES = False
+
 
 class Server:
     def __init__(self, ip, port) -> None:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP socket creation
         self.socket.bind((ip, port))  # needs to be a tuple
+        # self.socket.settimeout(0)
 
         # KEPP ALIVE
         self.client_last_seen = time.time()
@@ -75,7 +79,7 @@ class Server:
         data = None
         try:
             while data is None:
-                data, self.client = self.socket.recvfrom(1464)  # buffer size is 1024 bytes
+                data, self.client = self.socket.recvfrom(1472)  # buffer size is 1024 bytes
                 # self.client_last_keep_alive = time.time()
             self.client_last_seen = time.time()
             return data
@@ -92,34 +96,66 @@ class Server:
         global FILE_PATH, COMMUNICATION_TERMINATED, SERVER_TIMED_OUT
         if COMMUNICATION_TERMINATED or SERVER_TIMED_OUT:
             return
-        user_input = ""
-        while user_input != "s" and user_input != "c":
-            user_input = input("Enter 's' to show save location or 'c' to change it : \n")
-            if user_input == "s":
+        try:
+            if keyboard.is_pressed('s'):
                 print("Current save location: ", FILE_PATH, "\n")
-            elif user_input == "c":
-                while not os.path.exists(user_input):
-                    user_input = input("Enter new save location: ")
-                FILE_PATH = user_input
+
+            elif keyboard.is_pressed('c'):
+                FILE_PATH = input("Enter new save location: ")
+                while not os.path.exists(FILE_PATH):
+                    FILE_PATH = input("Enter new save location: ")
                 print("Save location changed to: ", FILE_PATH, "\n")
-            return
+            elif keyboard.is_pressed('w'):
+                # send swap roles message
+                print("Sending swap roles message...")
+                message = segment.creating_category('1') + segment.creating_flags(
+                    [W]) + segment.creating_fragment_number(1) + segment.creating_checksum('Swap roles') + 'Swap roles'.encode("utf-8")
+                self.socket.sendto(message, self.client)
 
-
+        except:
+            ...
+        # while user_input != "s" and user_input != "c":
+        #     user_input = input("Enter 's' to show save location or 'c' to change it : \n")
+        #     if user_input == "s":
+        #         print("Current save location: ", FILE_PATH, "\n")
+        #     elif user_input == "c":
+        #         while not os.path.exists(user_input):
+        #             user_input = input("Enter new save location: ")
+        #         FILE_PATH = user_input
+        #         print("Save location changed to: ", FILE_PATH, "\n")
+        #     return
 
     def check_keep_alive_continuously(self):
-        global COMMUNICATION_TERMINATED, SERVER_TIMED_OUT
+        global COMMUNICATION_TERMINATED, SERVER_TIMED_OUT, SWAP_ROLES
+        # if SWAP_ROLES:                 # TODO тут не работает
+        #     self.timeout_thread.join()
+        #     return
         while not COMMUNICATION_TERMINATED and not SERVER_TIMED_OUT:
+            # if SWAP_ROLES:                       # TODO тут не работает
+                # self.timeout_thread.join()
+                # SERVER_TIMED_OUT = True
+                # COMMUNICATION_TERMINATED = True
+                # self.quit()
+                # return
             time.sleep(1)  # Adjust the sleep interval as needed
             self.check_keep_alive_timer()
+        # self.timeout_thread.join()  # TODO тут нельзя!
 
     def check_keep_alive_timer(self):
-        global CONNECTION_TERMINATED, COMMUNICATION_STARTED, SERVER_TIMED_OUT
+        global COMMUNICATION_TERMINATED, COMMUNICATION_STARTED, SERVER_TIMED_OUT, SWAP_ROLES
+        # if SWAP_ROLES:
+            # self.timeout_thread.join()   # TODO тут нельзя!
+            # SERVER_TIMED_OUT = True
+            # COMMUNICATION_TERMINATED = True
+            # self.timeout_thread.join()
+            # self.quit()
+            # return
         current_time = time.time()
         # print("Hasn't received msg in: ", current_time - self.client_last_seen)
         if current_time - self.client_last_seen > KEEP_ALIVE_TIMEOUT:
             print("Client has timed out... closing connection")
             SERVER_TIMED_OUT = True
-            CONNECTION_TERMINATED = True
+            COMMUNICATION_TERMINATED = True
             self.quit()
             return
 
@@ -147,7 +183,7 @@ class Server:
                 text_answer = segment.creating_category('2') + segment.creating_flags(
                     [P, A]) + segment.creating_fragment_number(1) + segment.creating_checksum(
                     'Text Message Received') + 'Text Message Received'.encode("utf-8")
-                server.socket.sendto(text_answer, server.client)
+                self.socket.sendto(text_answer, self.client)
 
                 print("Text message: ", data[8::].decode("utf-8"))
                 print("Fragment number: ", data[2:4])
@@ -191,7 +227,7 @@ class Server:
                 file_answer = segment.creating_category('3') + segment.creating_flags(
                     [P, A]) + segment.creating_fragment_number(1) + segment.creating_checksum(
                     'File Message Received') + 'File Message Received'.encode("utf-8")
-                server.socket.sendto(file_answer, server.client)
+                self.socket.sendto(file_answer, self.client)
 
                 print("File message: ", data[8::])
                 print("Fragment number: ", data[2:4])
@@ -230,7 +266,7 @@ class Server:
         self.user_input.join()
         print("Server closed...")
         # os._exit(1)
-        sys.exit()
+        # sys.exit()
 
     def terminate_communication(self):
         global COMMUNICATION_TERMINATED
@@ -242,26 +278,52 @@ class Server:
         COMMUNICATION_TERMINATED = True
         self.quit()
 
+    def waiting_for_connection_establishment(self):
+        global data, COMMUNICATION_STARTED
+        print("Waiting for start of communication message...")
+        while not COMMUNICATION_STARTED:
+            data = self.receive()
 
-def waiting_for_connection_establishment():
-    global data, COMMUNICATION_STARTED
-    print("Waiting for start of communication message...")
-    while not COMMUNICATION_STARTED:
-        data = server.receive()
+            if data is None:
+                break
 
-        if data is None:
-            break
+            if "S" in segment.get_flags(format(data[1], "08b")):
+                print("Received start of communication message, sending response...")
 
-        if "S" in segment.get_flags(format(data[1], "08b")):
-            print("Received start of communication message, sending response...")
+                # send response
+                message = segment.creating_category('1') + segment.creating_flags(
+                    [S, A]) + segment.creating_fragment_number(1) + segment.creating_checksum('') + ''.encode("utf-8")
+                self.socket.sendto(message, self.client)
 
-            # send response
-            message = segment.creating_category('1') + segment.creating_flags(
-                [S, A]) + segment.creating_fragment_number(1) + segment.creating_checksum('') + ''.encode("utf-8")
-            server.socket.sendto(message, server.client)
+                COMMUNICATION_STARTED = True
+                continue
 
-            COMMUNICATION_STARTED = True
-            continue
+    def swap_roles(self):
+        global COMMUNICATION_STARTED, COMMUNICATION_TERMINATED, SWAP_ROLES, FILE_PATH, FILE_NAME
+        print("Received swap roles message... swapping roles")
+
+        # send response
+        message = segment.creating_category('1') + segment.creating_flags(
+            [W, A]) + segment.creating_fragment_number(1) + segment.creating_checksum('Switch roles acknowledge') + 'Switch roles acknowledge'.encode("utf-8")
+        self.socket.sendto(message, self.client)
+
+        COMMUNICATION_STARTED = False
+        COMMUNICATION_TERMINATED = False
+        SWAP_ROLES = True
+        FILE_PATH = "."
+        FILE_NAME = ""
+        self.quit()
+
+    def swap_roles2(self):
+        global COMMUNICATION_STARTED, COMMUNICATION_TERMINATED, SWAP_ROLES, FILE_PATH, FILE_NAME
+        print("Received swap roles message... swapping roles")
+
+        COMMUNICATION_STARTED = False
+        COMMUNICATION_TERMINATED = False
+        SWAP_ROLES = True
+        FILE_PATH = "."
+        FILE_NAME = ""
+        self.quit()
 
 
 def is_keep_alive_msg(data):
@@ -279,7 +341,23 @@ def is_termination_msg(data):
     return False
 
 
-if __name__ == "__main__":
+def is_swap_roles_msg(data):
+    if data[0] == 1:
+        if "W" in segment.get_flags(format(data[1], "08b")):
+            return True
+    return False
+
+
+def is_confirming_swap_roles_msg(data):
+    if data[0] == 1:
+        if "W" in segment.get_flags(format(data[1], "08b")) and "A" in segment.get_flags(format(data[1], "08b")):
+            return True
+    return False
+
+
+
+
+def start_server():
     # server.start_keep_alive_monitor_thread()
     data = "empty"
 
@@ -299,12 +377,12 @@ if __name__ == "__main__":
         # TODO need to tidy up this code
         # establish communication with server and wait for server to send back syn ack. If syn ack is not received in 5 seconds, resend syn
         if not COMMUNICATION_STARTED:
-            waiting_for_connection_establishment()
+            server.waiting_for_connection_establishment()
             # break
         else:
             # server need to send something, so clients receive does not stack the process, time counter does not increase
-            if data != "empty":
-                server.send_response()
+            # if data != "empty":
+            #     server.send_response()
 
             data = server.receive()
 
@@ -313,6 +391,14 @@ if __name__ == "__main__":
 
             if is_termination_msg(data):
                 server.terminate_communication()
+                break
+
+            if is_swap_roles_msg(data):
+                server.swap_roles()
+                break
+
+            if is_confirming_swap_roles_msg(data):
+                server.swap_roles2()
                 break
 
             # server.check_keep_alive(data) # check if client has timed out
@@ -344,3 +430,7 @@ if __name__ == "__main__":
 
     # server.send_last_response()
     server.quit()
+
+
+if __name__ == "__main__":
+    start_server()
