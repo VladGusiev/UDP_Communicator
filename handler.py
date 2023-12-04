@@ -1,6 +1,7 @@
 import client
 import server
 import segment
+import socket
 
 # handler is the main entry point for the application and is responsible for starting the client and server
 # processes. It also handles the communication between the client and server processes.
@@ -9,9 +10,6 @@ CURRENT_ROLE = ''
 
 SERVER_IP = ''
 SERVER_PORT = 0
-
-# CLIENT_IP = ''
-# CLIENT_PORT = 0
 
 
 def main():
@@ -30,26 +28,16 @@ def main():
         server.start_server(SERVER_IP, SERVER_PORT)
 
     while client.SWAP_ROLES or server.SWAP_ROLES:
-
+        host_name = socket.gethostname()
+        host_ip = socket.gethostbyname(host_name)
         print("Client info: ", segment.CLIENT_INFO)
         reset_all()
         if CURRENT_ROLE == "c":
             CURRENT_ROLE = "s"
-            server.start_server(SERVER_IP, SERVER_PORT)
+            server.start_server(host_ip, SERVER_PORT)
         elif CURRENT_ROLE == "s":
             CURRENT_ROLE = "c"
             client.start_client(segment.CLIENT_INFO[0], SERVER_PORT)
-
-        #
-        # if client.SWAP_ROLES:
-        #     client.SWAP_ROLES = False
-        #     CURRENT_ROLE = "s"
-        #     server.start_server()
-        # elif server.SWAP_ROLES:
-        #     server.SWAP_ROLES = False
-        #     CURRENT_ROLE = "c"
-        #     client.start_client()
-
 
 def request_ip_and_port():
     global SERVER_IP, SERVER_PORT

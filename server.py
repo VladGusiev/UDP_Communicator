@@ -222,7 +222,7 @@ class Server:
 
                 FULL_TEXT_MESSAGE = []
 
-                ALL_FILES_RECEIVED.append(["Full string: " + full_string, "Size of message: " + str(len(full_string)), "Fragments number: " + str(int.from_bytes(data[2:4])-1)])
+                ALL_FILES_RECEIVED.append(["Full string: " + full_string, "Size of message: " + str(len(full_string)), "Fragments number: " + str(int.from_bytes(data[2:4], byteorder='big')-1)])
 
     def listening_file_message(self, data):
         global GETTING_FILE_MESSAGE, FILE_NAME
@@ -269,7 +269,7 @@ class Server:
 
                 FULL_FILE_MESSAGE = []
 
-                ALL_FILES_RECEIVED.append(["Full path: " + FILE_PATH + '\\' + FILE_NAME, "Size of file: " + str(os.path.getsize(FILE_PATH + '\\' + FILE_NAME)), "Fragments number: " + str(int.from_bytes(data[2:4])-1)])
+                ALL_FILES_RECEIVED.append(["Full path: " + FILE_PATH + '\\' + FILE_NAME, "Size of file: " + str(os.path.getsize(FILE_PATH + '\\' + FILE_NAME)), "Fragments number: " + str(int.from_bytes(data[2:4], byteorder='big')-1)])
                 print("All files received: ", ALL_FILES_RECEIVED)
                 # C:\Users\someuser\Desktop\pks_try
     def send_response(self):

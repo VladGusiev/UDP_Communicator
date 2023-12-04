@@ -136,6 +136,7 @@ class Client:
                     IS_WAITING_FOR_ACK = False
                     SWAP_ROLES = True
                     self.quit()
+
             return data
 
         except socket.error:
