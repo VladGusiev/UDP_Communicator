@@ -7,6 +7,7 @@ import zlib
 import sys
 
 import segment
+import handler
 
 # CLIENT_IP = "127.0.0.1"
 # CLIENT_PORT = 50602
@@ -303,9 +304,9 @@ def system_message():
         return '2'
 
 
-def start_client():
+def start_client(server_ip, server_port):
     global COMMUNICATION_STARTED, CURRENT_CATEGORY, IS_WAITING_FOR_ACK, CURRENT_UNACKNOWLEDGED_SEGMENTS, SWAP_ROLES, CLIENT_TIMED_OUT, COMMUNICATION_TERMINATED
-    print("To setup client, please enter the following information: ")
+    # print("To setup client, please enter the following information: ")
 
     # client_ip = input(" - Client IP: ")
     # client_port = int(input(" - Client Port: "))
@@ -314,8 +315,8 @@ def start_client():
 
     # client_ip = "127.0.0.1"
     # client_port = 6061
-    server_ip = "127.0.0.1"
-    server_port = 6060
+    # server_ip = "127.0.0.1"
+    # server_port = 6060
 
     client = Client(server_ip, server_port)
     client.start_keep_alive()
@@ -386,4 +387,4 @@ def start_client():
 
 
 if __name__ == "__main__":
-    start_client()
+    start_client(handler.SERVER_IP, handler.SERVER_PORT)

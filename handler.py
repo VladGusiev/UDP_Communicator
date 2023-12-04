@@ -1,14 +1,21 @@
 import client
 import server
+import segment
 
 # handler is the main entry point for the application and is responsible for starting the client and server
 # processes. It also handles the communication between the client and server processes.
 
 CURRENT_ROLE = ''
 
+SERVER_IP = ''
+SERVER_PORT = 0
+
+# CLIENT_IP = ''
+# CLIENT_PORT = 0
+
 
 def main():
-    global CURRENT_ROLE
+    global CURRENT_ROLE, SERVER_IP, SERVER_PORT, CLIENT_IP, CLIENT_PORT, CLIENT_INFO
     print("Choose your, role (c - client/ s - server): ")
     CURRENT_ROLE = input(">> ")
     while CURRENT_ROLE != "c" and CURRENT_ROLE != "s":
@@ -16,21 +23,23 @@ def main():
         print("Choose your, role (c - client/ s - server): ")
         CURRENT_ROLE = input(">> ")
     if CURRENT_ROLE == "c":
-       client.start_client()
+        request_ip_and_port()
+        client.start_client(SERVER_IP, SERVER_PORT)
     elif CURRENT_ROLE == "s":
-        server.start_server()
+        request_ip_and_port()
+        server.start_server(SERVER_IP, SERVER_PORT)
 
     while client.SWAP_ROLES or server.SWAP_ROLES:
+
+        print("Client info: ", segment.CLIENT_INFO)
         reset_all()
         if CURRENT_ROLE == "c":
-
-
             CURRENT_ROLE = "s"
-            server.start_server()
+            server.start_server(SERVER_IP, SERVER_PORT)
         elif CURRENT_ROLE == "s":
-
             CURRENT_ROLE = "c"
-            client.start_client()
+            client.start_client(segment.CLIENT_INFO[0], SERVER_PORT)
+
         #
         # if client.SWAP_ROLES:
         #     client.SWAP_ROLES = False
@@ -40,6 +49,20 @@ def main():
         #     server.SWAP_ROLES = False
         #     CURRENT_ROLE = "c"
         #     client.start_client()
+
+
+def request_ip_and_port():
+    global SERVER_IP, SERVER_PORT
+    while SERVER_IP == '' or SERVER_PORT == 0:
+        print("Enter server ip: ")
+        SERVER_IP = input(">> ")
+        print("Enter server port: ")
+        SERVER_PORT = input(">> ")
+        try:
+            SERVER_PORT = int(SERVER_PORT)
+        except ValueError:
+            print("Invalid port")
+            SERVER_PORT = 0
 
 def reset_all():
     client.SWAP_ROLES = False
@@ -55,6 +78,7 @@ def reset_all():
     server.SERVER_TIMED_OUT = False
     server.FILE_PATH = "."  # by default pycharm will save files in the same directory as the project
     server.FILE_NAME = ""
+    server.ALL_FILES_RECEIVED = []
 
 if __name__ == "__main__":
     main()

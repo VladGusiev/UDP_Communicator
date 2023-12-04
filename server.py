@@ -8,6 +8,7 @@ import sys
 import keyboard
 
 import segment
+import handler
 
 
 # SERVER_IP = "127.0.0.1"
@@ -57,6 +58,8 @@ FILE_NAME = ""
 
 SWAP_ROLES = False
 
+ALL_FILES_RECEIVED = []
+
 
 class Server:
     def __init__(self, ip, port) -> None:
@@ -82,6 +85,11 @@ class Server:
                 data, self.client = self.socket.recvfrom(1472)  # buffer size is 1024 bytes
                 # self.client_last_keep_alive = time.time()
             self.client_last_seen = time.time()
+
+            segment.CLIENT_INFO = tuple()
+            segment.CLIENT_INFO = self.client
+            print("Client info: ", segment.CLIENT_INFO)
+
             return data
         except socket.error:
             ...
@@ -96,21 +104,24 @@ class Server:
         global FILE_PATH, COMMUNICATION_TERMINATED, SERVER_TIMED_OUT
         if COMMUNICATION_TERMINATED or SERVER_TIMED_OUT:
             return
+        is_pressed = False
         try:
-            if keyboard.is_pressed('s'):
+            if keyboard.is_pressed('['):
                 print("Current save location: ", FILE_PATH, "\n")
-
-            elif keyboard.is_pressed('c'):
+            elif keyboard.is_pressed(']'):
                 FILE_PATH = input("Enter new save location: ")
                 while not os.path.exists(FILE_PATH):
                     FILE_PATH = input("Enter new save location: ")
                 print("Save location changed to: ", FILE_PATH, "\n")
-            elif keyboard.is_pressed('w'):
+            elif keyboard.is_pressed(';'):
                 # send swap roles message
                 print("Sending swap roles message...")
                 message = segment.creating_category('1') + segment.creating_flags(
                     [W]) + segment.creating_fragment_number(1) + segment.creating_checksum('Swap roles') + 'Swap roles'.encode("utf-8")
                 self.socket.sendto(message, self.client)
+                return
+            elif keyboard.is_pressed("/"):
+                print("All received files: ", ALL_FILES_RECEIVED)
 
         except:
             ...
@@ -202,12 +213,16 @@ class Server:
             if "C" in segment.get_flags(format(data[1], "08b")):  # flag is end of text message
                 print("Recieved end of text message")
                 GETTING_TEXT_MESSAGE = False
+                full_string = ""
 
                 print("Full text message: ", end="")
                 for message in FULL_TEXT_MESSAGE:
                     print(message[0], end="")
+                    full_string += message[0]
 
                 FULL_TEXT_MESSAGE = []
+
+                ALL_FILES_RECEIVED.append(["Full string: " + full_string, "Size of message: " + str(len(full_string)), "Fragments number: " + str(int.from_bytes(data[2:4])-1)])
 
     def listening_file_message(self, data):
         global GETTING_FILE_MESSAGE, FILE_NAME
@@ -253,6 +268,9 @@ class Server:
                 f_write.close()
 
                 FULL_FILE_MESSAGE = []
+
+                ALL_FILES_RECEIVED.append(["Full path: " + FILE_PATH + '\\' + FILE_NAME, "Size of file: " + str(os.path.getsize(FILE_PATH + '\\' + FILE_NAME)), "Fragments number: " + str(int.from_bytes(data[2:4])-1)])
+                print("All files received: ", ALL_FILES_RECEIVED)
                 # C:\Users\someuser\Desktop\pks_try
     def send_response(self):
         self.socket.sendto(b"Message recieved...", self.client)
@@ -355,9 +373,7 @@ def is_confirming_swap_roles_msg(data):
     return False
 
 
-
-
-def start_server():
+def start_server(server_ip, server_port):
     # server.start_keep_alive_monitor_thread()
     data = "empty"
 
@@ -365,8 +381,8 @@ def start_server():
     # server_ip = input(" - Server IP: ")
     # server_port = int(input(" - Server Port: "))
 
-    server_ip = "127.0.0.1"
-    server_port = 6060
+    # server_ip = "127.0.0.1"
+    # server_port = 6060
 
     server = Server(server_ip, server_port)
     print("After end of communication, due to timeout or termination, type anything to close server...")
@@ -428,9 +444,8 @@ def start_server():
                 print("Checksums do not match")
                 # TODO add what to do if checksums do not match (most likely ignore and wait next message)
 
-    # server.send_last_response()
     server.quit()
 
 
 if __name__ == "__main__":
-    start_server()
+    start_server(handler.SERVER_IP, handler.SERVER_PORT)

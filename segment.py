@@ -24,6 +24,8 @@ FLAGS = {
     8: "S"
 }
 
+CLIENT_INFO = tuple()
+
 # creating header consisting of category, falgs, fragment number, and checksum
 # Category will contain the type of message being sent 0x01 for system messages like keep alive, syn, fin, etc.
 # 0x02 for text messages and 0x03 for file messages
