@@ -132,14 +132,6 @@ class Server:
             self.quit()
             return
 
-    def listen_to_communication_start(self, data):
-        global COMMUNICATION_STARTED
-        if data[0] == 1:
-            if "S" in segment.get_flags(format(data[1], "08b")):
-                print("Recieved start of communication")
-                COMMUNICATION_STARTED = True
-                self.send_response()
-
     def listening_text_message(self, data):
         global GETTING_TEXT_MESSAGE
         if data[0] == 2:
@@ -151,20 +143,16 @@ class Server:
         global FULL_TEXT_MESSAGE
         if data[0] == 2:
             if "P" in segment.get_flags(format(data[1], "08b")):  # flag is text message
-                print("Recieved text message")
+                print("Received text message")
 
                 text_answer = segment.creating_category('2') + segment.creating_flags(
                     [P, A]) + segment.creating_fragment_number(1) + segment.creating_checksum(
                     'Text Message Received') + 'Text Message Received'.encode("utf-8")
                 self.socket.sendto(text_answer, self.client)
 
-                print("Text message: ", data[8::].decode("utf-8"))
-                print("Fragment number: ", data[2:4])
-
                 full_string = data[8::].decode("utf-8")
                 text_message = full_string.split("***")
-                print("Only needed text message: ", text_message[0])
-                # check if message is duplicate
+
                 for message in FULL_TEXT_MESSAGE:
                     if data[2:4] == message[1]:
                         print("Duplicate message")
@@ -207,8 +195,8 @@ class Server:
                     'File Message Received') + 'File Message Received'.encode("utf-8")
                 self.socket.sendto(file_answer, self.client)
 
-                print("File message: ", data[8::])
-                print("Fragment number: ", data[2:4])
+                # print("File message: ", data[8::])
+                # print("Fragment number: ", data[2:4])
 
                 # check if message is duplicate
                 for message in FULL_FILE_MESSAGE:
@@ -234,11 +222,6 @@ class Server:
 
                 ALL_FILES_RECEIVED.append(["Full path: " + FILE_PATH + '\\' + FILE_NAME, "Size of file: " + str(os.path.getsize(FILE_PATH + '\\' + FILE_NAME)), "Fragments number: " + str(int.from_bytes(data[2:4], byteorder='big')-1)])
 
-    def send_response(self):
-        self.socket.sendto(b"Message received...", self.client)
-
-    def send_last_response(self):
-        self.socket.sendto(b"End connection message received... closing connection", self.client)
 
     def quit(self):
         self.socket.close()
@@ -329,10 +312,12 @@ def is_confirming_swap_roles_msg(data):
 
 
 def start_server(server_ip, server_port):
+    print("List of commands accessible for server: \n>> [ - to see current save location \n>> ] - to change save location \n>> ; - to swap roles \n>> / - to see all received files \n")
+    print("!Note: Program is listening to key events, the loger you press the key, the more times it will be executed!\n")
     data = "empty"
 
     server = Server(server_ip, server_port)
-    print("After end of communication, due to timeout or termination, type anything to close server...")
+    print("After end of communication, due to timeout or termination or swap, type anything to close server...")
     while not COMMUNICATION_TERMINATED and not SERVER_TIMED_OUT:
 
         # establish communication with server and wait for server to send back syn ack.
