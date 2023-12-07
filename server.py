@@ -167,8 +167,10 @@ class Server:
                 GETTING_TEXT_MESSAGE = False
                 full_string = ""
 
+                FULL_TEXT_MESSAGE.reverse()
                 for message in FULL_TEXT_MESSAGE:
                     full_string += message[0]
+
                 print("Full text message: ", full_string)
 
                 FULL_TEXT_MESSAGE = []
@@ -214,6 +216,7 @@ class Server:
                 GETTING_FILE_MESSAGE = False
 
                 f_write = open(FILE_PATH + '\\' + FILE_NAME, "wb")
+                FULL_FILE_MESSAGE.reverse()
                 for packet in FULL_FILE_MESSAGE:
                     f_write.write(packet[0])
                 f_write.close()

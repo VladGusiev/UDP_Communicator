@@ -154,11 +154,12 @@ class Client:
         for i in range(0, len(user_message), fragment_size):
             fragments.append(user_message[i:i + fragment_size])
 
+        fragments.reverse()
         # sending fragments
         for i in range(len(fragments)):
             if len(fragments[i]) < 25:
                 fragments[i] = fragments[i] + "***" + ((25-len(fragments[i])) * "0")
-            self.send_message(CURRENT_CATEGORY, [P], i+1, fragments[i])
+            self.send_message(CURRENT_CATEGORY, [P], len(fragments)-i, fragments[i])
             IS_WAITING_FOR_ACK = True
 
             # waiting for ack
@@ -225,11 +226,12 @@ class Client:
         fragments = []
         for i in range(0, file_size, fragment_size):
             fragments.append(file.read(fragment_size))
+        fragments.reverse()
         print("Number of fragments: ", len(fragments))
 
         # sending fragments
         for i in range(len(fragments)):
-            self.send_message_file_format(CURRENT_CATEGORY, [P], i + 1, fragments[i])
+            self.send_message_file_format(CURRENT_CATEGORY, [P], len(fragments) - i, fragments[i])
             IS_WAITING_FOR_ACK = True
 
             # waiting for ack
